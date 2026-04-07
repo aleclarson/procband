@@ -109,11 +109,14 @@ Supervision adds four behaviors on top of raw `spawn()`:
   supervised process exists.
 - `stderr` prefixes always use the reserved red, even when a custom process
   color is configured.
+- `ProcessConfig.name` is optional. When omitted, it falls back to the
+  trailing `/[-\w]+$/` match from `command`.
 
 # Error Model
 
-- `supervise()` throws synchronously for invalid config such as missing `name`,
-  missing `command`, or an invalid reserved color.
+- `supervise()` throws synchronously for invalid config such as missing
+  `command`, a `command` that does not produce a fallback `name`, or an
+  invalid reserved color.
 - `waitFor()` rejects on timeout or terminal exit before a future match.
 - A thrown `match()` callback only unsubscribes that callback.
 - Errors from `ProcessConfig.stderr` stop teeing to that sink but do not stop

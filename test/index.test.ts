@@ -122,6 +122,35 @@ describe('supervise', () => {
     expect(stripAnsi(stderrText)).toContain('[basic] warn\n')
   })
 
+  it('falls back to a name derived from command', async () => {
+    const expectedName = process.execPath.match(/[-\w]+$/)?.[0]
+    expect(expectedName).toBeTruthy()
+
+    const proc = track(
+      supervise({
+        command: process.execPath,
+        args: ['-e', 'console.log("ready")'],
+      }),
+    )
+
+    await expect(proc.waitFor('ready')).resolves.toMatchObject({
+      process: expectedName,
+      stream: 'stdout',
+      line: 'ready',
+    })
+
+    await expect(proc.wait()).resolves.toEqual({
+      name: expectedName,
+      code: 0,
+      exitCode: 0,
+      signal: null,
+      restarts: 0,
+      restartSuppressed: false,
+    })
+
+    expect(stripAnsi(stdoutText)).toContain(`[${expectedName}] ready\n`)
+  })
+
   it('restarts on failure until success and reports restart count', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'procband-restart-'))
     const counterFile = join(dir, 'attempt.txt')

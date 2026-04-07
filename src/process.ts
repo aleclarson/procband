@@ -58,8 +58,8 @@ type LineBuffer = {
  *
  * @param config The subprocess configuration to supervise.
  * @returns A `ChildProcess`-compatible wrapper with procband-specific helpers.
- * @throws When `config` is invalid, such as a missing `name`, missing
- * `command`, or an invalid reserved color.
+ * @throws When `config` is invalid, such as a missing `command`, a `command`
+ * that does not produce a fallback `name`, or an invalid reserved color.
  * @example
  * ```ts
  * import process from 'node:process'
@@ -108,11 +108,11 @@ class ProcbandProcessImpl
   constructor(config: ProcessConfig) {
     super()
 
-    validateProcessConfig(config)
+    const name = validateProcessConfig(config)
 
     this.config = config
-    this.name = config.name
-    this.label = config.label ?? config.name
+    this.name = name
+    this.label = config.label ?? name
     this.color = resolveProcessColor(config.color)
     this.matches = new MatchRegistry(this.name)
     this.restart = new RestartController(config.restart)
@@ -545,15 +545,24 @@ const liveProcesses = new Set<ProcbandProcessImpl>()
 let propagatedFailure = false
 
 function validateProcessConfig(config: ProcessConfig) {
-  if (!config.name) {
-    throw new Error('ProcessConfig.name is required')
-  }
-
   if (!config.command) {
     throw new Error('ProcessConfig.command is required')
   }
 
   validateProcessColor(config.color)
+
+  const name = config.name || inferProcessName(config.command)
+  if (!name) {
+    throw new Error(
+      'ProcessConfig.name is required when command does not match /[-\\w]+$/',
+    )
+  }
+
+  return name
+}
+
+function inferProcessName(command: string) {
+  return command.match(/[-\w]+$/)?.[0]
 }
 
 function getResultExitCode(

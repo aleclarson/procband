@@ -20,7 +20,6 @@ import process from 'node:process'
 import { supervise } from 'procband'
 
 const proc = supervise({
-  name: 'api',
   command: process.execPath,
   args: ['-e', 'console.log("ready")'],
 })

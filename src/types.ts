@@ -30,8 +30,10 @@ export type MatchStream = 'stdout' | 'stderr' | 'both'
 export interface ProcessConfig {
   /**
    * Stable identifier used in prefixed output and emitted match events.
+   *
+   * Defaults to the trailing `/[-\w]+$/` match from `command`.
    */
-  name: string
+  name?: string
 
   /**
    * Executable or shell-free command name passed to `spawn()`.
