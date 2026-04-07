@@ -259,10 +259,10 @@ class ProcbandProcessImpl
     }
   }
 
-  async cleanupFromSigint() {
+  async cleanupFromSignal(signal: Signals) {
     this.restartDisabled = true
     this.restart.cancelDelay()
-    await this.stopActiveTree('SIGINT', 1000)
+    await this.stopActiveTree(signal, 1000)
   }
 
   private async stopActiveTree(

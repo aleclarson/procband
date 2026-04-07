@@ -6,12 +6,12 @@ import type { KillSignal } from './types.js'
 
 export interface CleanupTarget {
   cleanupFromExit(): void
-  cleanupFromSigint(): Promise<void>
+  cleanupFromSignal(signal: NodeJS.Signals): Promise<void>
 }
 
 const liveTargets = new Set<CleanupTarget>()
 let parentCleanupInstalled = false
-let handlingSigint = false
+let handlingSignal = false
 
 export function registerCleanupTarget(target: CleanupTarget) {
   liveTargets.add(target)
@@ -72,6 +72,7 @@ function installParentCleanup() {
 
   parentCleanupInstalled = true
   process.on('SIGINT', onParentSigint)
+  process.on('SIGTERM', onParentSigterm)
   process.on('exit', onParentExit)
 }
 
@@ -82,6 +83,7 @@ function uninstallParentCleanup() {
 
   parentCleanupInstalled = false
   process.off('SIGINT', onParentSigint)
+  process.off('SIGTERM', onParentSigterm)
   process.off('exit', onParentExit)
 }
 
@@ -92,23 +94,32 @@ function onParentExit() {
 }
 
 function onParentSigint() {
-  if (handlingSigint) {
+  onParentSignal('SIGINT')
+}
+
+function onParentSigterm() {
+  onParentSignal('SIGTERM')
+}
+
+function onParentSignal(signal: NodeJS.Signals) {
+  if (handlingSignal) {
     return
   }
 
-  handlingSigint = true
-  const pending = [...liveTargets].map(target => target.cleanupFromSigint())
+  handlingSignal = true
+  const handler = signal === 'SIGINT' ? onParentSigint : onParentSigterm
+  const pending = [...liveTargets].map(target => target.cleanupFromSignal(signal))
 
   void Promise.allSettled(pending).finally(() => {
-    handlingSigint = false
-    process.off('SIGINT', onParentSigint)
+    handlingSignal = false
+    process.off(signal, handler)
 
-    if (process.listenerCount('SIGINT') === 0) {
-      process.kill(process.pid, 'SIGINT')
+    if (process.listenerCount(signal) === 0) {
+      process.kill(process.pid, signal)
       return
     }
 
-    process.on('SIGINT', onParentSigint)
+    process.on(signal, handler)
   })
 }
 

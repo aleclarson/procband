@@ -195,6 +195,50 @@ describe('supervise', () => {
     expect(result.name).toBe('tree')
     await waitForExit(pid)
   })
+
+  it('stops live processes on parent SIGTERM', async () => {
+    const script = [
+      'const { spawn } = await import("node:child_process")',
+      'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" })',
+      'console.log(`descendant:${child.pid}`)',
+      'setInterval(() => {}, 1000)',
+    ].join(';')
+
+    const initialSigtermListeners = process.listeners('SIGTERM')
+    const proc = track(
+      supervise({
+        name: 'term',
+        command: process.execPath,
+        args: ['-e', script],
+      }),
+    )
+
+    expect(process.listeners('SIGTERM')).toHaveLength(
+      initialSigtermListeners.length + 1,
+    )
+
+    const descendant = await proc.waitFor(/descendant:(\d+)/)
+    const pid = Number(descendant.match?.[1])
+    expect(Number.isInteger(pid)).toBe(true)
+    expect(isAlive(pid)).toBe(true)
+
+    await (
+      proc as ProcbandProcess & {
+        cleanupFromSignal(signal: NodeJS.Signals): Promise<void>
+      }
+    ).cleanupFromSignal('SIGTERM')
+
+    const result = await proc.wait()
+    expect(result).toMatchObject({
+      name: 'term',
+      signal: 'SIGTERM',
+    })
+    expect(process.listeners('SIGTERM')).toHaveLength(
+      initialSigtermListeners.length,
+    )
+
+    await waitForExit(pid)
+  })
 })
 
 function track(proc: ProcbandProcess) {
