@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { constants } from 'node:os'
 import process from 'node:process'
 import type { Writable } from 'node:stream'
 import {
@@ -438,6 +439,7 @@ class ProcbandProcessImpl
     return {
       name: this.name,
       code,
+      exitCode: getResultExitCode(code, signal),
       signal,
       restarts: this.restart.restarts,
       restartSuppressed: this.restart.restartSuppressed,
@@ -532,4 +534,19 @@ function validateProcessConfig(config: ProcessConfig) {
   }
 
   validateProcessColor(config.color)
+}
+
+function getResultExitCode(
+  code: number | null,
+  signal: Signals | null,
+) {
+  if (code != null) {
+    return code
+  }
+
+  if (signal) {
+    return 128 + (constants.signals[signal] ?? 0)
+  }
+
+  return 1
 }

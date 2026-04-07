@@ -1,6 +1,6 @@
 import { PassThrough } from 'node:stream'
 import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { constants, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import ansiStyles from 'ansi-styles'
@@ -98,6 +98,7 @@ describe('supervise', () => {
     expect(result).toEqual({
       name: 'basic',
       code: 0,
+      exitCode: 0,
       signal: null,
       restarts: 0,
       restartSuppressed: false,
@@ -159,6 +160,7 @@ describe('supervise', () => {
     await expect(proc.wait()).resolves.toEqual({
       name: 'restart',
       code: 0,
+      exitCode: 0,
       signal: null,
       restarts: 2,
       restartSuppressed: false,
@@ -193,6 +195,7 @@ describe('supervise', () => {
     const result = await proc.wait()
 
     expect(result.name).toBe('tree')
+    expect(result.exitCode).toBe(128 + constants.signals.SIGTERM)
     await waitForExit(pid)
   })
 
@@ -231,6 +234,7 @@ describe('supervise', () => {
     const result = await proc.wait()
     expect(result).toMatchObject({
       name: 'term',
+      exitCode: 128 + constants.signals.SIGTERM,
       signal: 'SIGTERM',
     })
     expect(process.listeners('SIGTERM')).toHaveLength(

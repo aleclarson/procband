@@ -221,6 +221,14 @@ export interface ProcessResult {
   code: number | null
 
   /**
+   * Shell-style exit status for the final process outcome.
+   *
+   * This is equal to `code` for normal exits, or `128 + signalNumber` when the
+   * process exited by signal.
+   */
+  exitCode: number
+
+  /**
    * Final terminating signal, or `null` when the process exited normally.
    */
   signal: Signals | null
