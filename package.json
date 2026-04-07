@@ -1,23 +1,25 @@
 {
-  "name": "proccoli",
+  "name": "procband",
   "version": "0.0.0",
+  "description": "Supervise subprocesses from TypeScript: prefix logs, wait for output patterns, and manage lifecycle/restarts.",
   "license": "MIT",
   "author": "Alec Larson",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aleclarson/proccoli.git"
+    "url": "https://github.com/aleclarson/procband.git"
   },
   "files": [
     "dist"
   ],
   "type": "module",
   "exports": {
-    "types": "./dist/index.d.ts",
-    "default": "./dist/index.js"
+    "types": "./dist/index.d.mts",
+    "default": "./dist/index.mjs"
   },
   "scripts": {
     "dev": "tsdown --sourcemap --watch",
     "build": "tsdown",
+    "docs:check": "pnpm build && tsc -p examples --noEmit && node examples/basic-usage.ts && node examples/restart-on-failure.ts",
     "format": "oxfmt .",
     "lint": "oxlint src",
     "typecheck": "tsc --noEmit && tsc -p test --noEmit",
@@ -25,12 +27,15 @@
     "prepublishOnly": "pnpm build"
   },
   "devDependencies": {
-    "@types/node": "*",
-    "oxfmt": "*",
-    "oxlint": "*",
-    "radashi": "*",
-    "tsdown": "*",
-    "typescript": "*",
-    "vitest": "*"
+    "@types/node": "^25.5.2",
+    "oxfmt": "^0.43.0",
+    "oxlint": "^1.58.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  },
+  "dependencies": {
+    "@alloc/tree-kill": "^1.3.0",
+    "ansi-styles": "^6.2.3"
   }
 }
