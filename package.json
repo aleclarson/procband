@@ -37,7 +37,7 @@
     "vitest": "^4.1.2"
   },
   "dependencies": {
-    "@alloc/tree-kill": "^1.3.0",
+    "@alloc/tree-kill": "^1.4.0",
     "ansi-styles": "^6.2.3"
   }
 }

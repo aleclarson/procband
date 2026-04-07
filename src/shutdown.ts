@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
-import treeKill from '@alloc/tree-kill'
+import treeKill, { treeKillSync } from '@alloc/tree-kill'
 import type { KillSignal } from './types.js'
 
 export interface CleanupTarget {
@@ -29,7 +29,9 @@ export function killTreeBestEffort(
   child: ChildProcess,
   signal?: KillSignal,
 ) {
-  void treeKill(child, signal).catch(() => {})
+  try {
+    treeKillSync(child, signal)
+  } catch {}
 }
 
 export async function stopChildTree(
