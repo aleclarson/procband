@@ -12,11 +12,14 @@ const activeProcesses = new Set<ProcbandProcess>()
 
 let stdoutText = ''
 let stderrText = ''
+let initialProcessExitCode: number | undefined
 
 describe('supervise', () => {
   beforeEach(() => {
     stdoutText = ''
     stderrText = ''
+    initialProcessExitCode = process.exitCode
+    process.exitCode = undefined
 
     vi.spyOn(process.stdout, 'write').mockImplementation(
       ((chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), cb?: () => void) => {
@@ -59,6 +62,8 @@ describe('supervise', () => {
         } catch {}
       }),
     )
+
+    process.exitCode = initialProcessExitCode
   })
 
   it('matches output, awaits exit, and tees raw stderr output', async () => {
@@ -242,6 +247,98 @@ describe('supervise', () => {
     )
 
     await waitForExit(pid)
+  })
+
+  it('propagates the first unobserved failure to the parent exit code', async () => {
+    const failing = supervise({
+      name: 'fail',
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => process.exit(7), 20)'],
+    })
+
+    const sibling = supervise({
+      name: 'peer',
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+    })
+
+    const siblingResult = await sibling.wait()
+
+    expect(process.exitCode).toBe(7)
+    expect(failing.exitCode).toBe(7)
+    expect(siblingResult).toMatchObject({
+      name: 'peer',
+      exitCode: 128 + constants.signals.SIGTERM,
+      signal: 'SIGTERM',
+    })
+  })
+
+  it('does not propagate failures for observed processes', async () => {
+    const failing = supervise({
+      name: 'observed',
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => process.exit(3), 20)'],
+    })
+
+    const sibling = supervise({
+      name: 'peer',
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+    })
+
+    activeProcesses.add(sibling)
+
+    try {
+      await expect(failing.wait()).resolves.toMatchObject({
+        name: 'observed',
+        exitCode: 3,
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      expect(process.exitCode).toBeUndefined()
+      expect(sibling.exitCode).toBeNull()
+    } finally {
+      try {
+        await sibling.stop({ killAfterMs: 200 })
+      } catch {}
+      await sibling.wait().catch(() => {})
+      activeProcesses.delete(sibling)
+    }
+  })
+
+  it('treats awaiting the process itself as observation', async () => {
+    const failing = supervise({
+      name: 'awaited',
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => process.exit(5), 20)'],
+    })
+
+    const sibling = supervise({
+      name: 'peer',
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+    })
+
+    activeProcesses.add(sibling)
+
+    try {
+      await expect(failing).resolves.toMatchObject({
+        name: 'awaited',
+        exitCode: 5,
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      expect(process.exitCode).toBeUndefined()
+      expect(sibling.exitCode).toBeNull()
+    } finally {
+      try {
+        await sibling.stop({ killAfterMs: 200 })
+      } catch {}
+      await sibling.wait().catch(() => {})
+      activeProcesses.delete(sibling)
+    }
   })
 })
 

@@ -99,9 +99,11 @@ class ProcbandProcessImpl
   private stderrSinkActive = true
   private stderrSinkCleanup: (() => void) | null = null
   private stopPromise: Promise<void> | null = null
+  private shutdownRequested = false
   private restartDisabled = false
   private finalized = false
   private lastResult: ProcessResult | null = null
+  private terminalResultObserved = false
 
   constructor(config: ProcessConfig) {
     super()
@@ -122,6 +124,7 @@ class ProcbandProcessImpl
     this.bindStderrSink()
     this.spawnAttempt()
     registerCleanupTarget(this)
+    liveProcesses.add(this)
   }
 
   get pid() {
@@ -188,6 +191,7 @@ class ProcbandProcessImpl
   }
 
   wait(): Promise<ProcessResult> {
+    this.markTerminalResultObserved()
     return this.finalPromise
   }
 
@@ -199,16 +203,19 @@ class ProcbandProcessImpl
       | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
       | null,
   ): Promise<TResult1 | TResult2> {
+    this.markTerminalResultObserved()
     return this.finalPromise.then(onfulfilled, onrejected)
   }
 
   catch<TResult = never>(
     onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
   ): Promise<ProcessResult | TResult> {
+    this.markTerminalResultObserved()
     return this.finalPromise.catch(onrejected)
   }
 
   finally(onfinally?: (() => void) | null): Promise<ProcessResult> {
+    this.markTerminalResultObserved()
     return this.finalPromise.finally(onfinally)
   }
 
@@ -239,6 +246,7 @@ class ProcbandProcessImpl
       return this.stopPromise
     }
 
+    this.shutdownRequested = true
     this.restartDisabled = true
     this.restart.cancelDelay()
 
@@ -251,6 +259,7 @@ class ProcbandProcessImpl
   }
 
   cleanupFromExit() {
+    this.shutdownRequested = true
     this.restartDisabled = true
     this.restart.cancelDelay()
 
@@ -261,6 +270,7 @@ class ProcbandProcessImpl
   }
 
   async cleanupFromSignal(signal: Signals) {
+    this.shutdownRequested = true
     this.restartDisabled = true
     this.restart.cancelDelay()
     await this.stopActiveTree(signal, 1000)
@@ -272,7 +282,7 @@ class ProcbandProcessImpl
   ) {
     const attempt = this.attempt
     if (!attempt || attempt.closed) {
-      await this.wait().then(() => undefined)
+      await this.finalPromise.then(() => undefined)
       return
     }
 
@@ -454,6 +464,13 @@ class ProcbandProcessImpl
     this.finalized = true
     this.restart.cancelDelay()
     this.lastResult = result
+    liveProcesses.delete(this)
+    if (liveProcesses.size === 0) {
+      propagatedFailure = false
+    }
+    if (this.shouldPropagateFailure(result)) {
+      propagateFailure(result.exitCode)
+    }
     this.matches.close(
       new Error(
         `Process "${this.name}" exited before a matching line was observed`,
@@ -462,6 +479,18 @@ class ProcbandProcessImpl
     this.unbindStderrSink()
     unregisterCleanupTarget(this)
     this.finalResolve(result)
+  }
+
+  private markTerminalResultObserved() {
+    this.terminalResultObserved = true
+  }
+
+  private shouldPropagateFailure(result: ProcessResult) {
+    return (
+      result.exitCode !== 0 &&
+      !this.shutdownRequested &&
+      !this.terminalResultObserved
+    )
   }
 
   private bindStderrSink() {
@@ -524,6 +553,9 @@ class ProcbandProcessImpl
   }
 }
 
+const liveProcesses = new Set<ProcbandProcessImpl>()
+let propagatedFailure = false
+
 function validateProcessConfig(config: ProcessConfig) {
   if (!config.name) {
     throw new Error('ProcessConfig.name is required')
@@ -549,4 +581,20 @@ function getResultExitCode(
   }
 
   return 1
+}
+
+function propagateFailure(exitCode: number) {
+  if (propagatedFailure) {
+    return
+  }
+
+  propagatedFailure = true
+
+  if (process.exitCode == null || process.exitCode === 0) {
+    process.exitCode = exitCode
+  }
+
+  for (const proc of liveProcesses) {
+    void proc.stop().catch(() => {})
+  }
 }
