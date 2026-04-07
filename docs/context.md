@@ -13,6 +13,7 @@ Supervision adds four behaviors on top of raw `spawn()`:
 - line-based matching for future output
 - optional restart policy with failure suppression
 - tree-aware shutdown for the child and its descendants
+- parent-exit propagation for unobserved terminal failures
 
 # When to Use
 
@@ -55,7 +56,10 @@ Supervision adds four behaviors on top of raw `spawn()`:
    `waitFor()`.
 6. When a child exits, `procband` either finalizes or starts a new attempt,
    depending on the restart policy.
-7. `await proc` or `await proc.wait()` resolves only after the process is
+7. A terminal failed exit that nobody observed through `await proc`,
+   `proc.wait()`, or the thenable helpers sets `process.exitCode` and begins
+   stopping any other live `procband` processes in the same parent script.
+8. `await proc` or `await proc.wait()` resolves only after the process is
    terminal and no further restart will happen.
 
 # Common Tasks -> Recommended APIs
@@ -68,6 +72,10 @@ Supervision adds four behaviors on top of raw `spawn()`:
   `proc.stop()`
 - Inspect final exit state:
   `await proc` or `await proc.wait()`
+- Take ownership of a process failure:
+  `await proc` or `await proc.wait()`
+- Let an unobserved terminal failure fail the parent script:
+  Do not call `wait()` or await the thenable result
 - Capture raw child `stderr` in a file or custom stream:
   `ProcessConfig.stderr`
 - Retry failed exits with sane defaults:
@@ -85,11 +93,20 @@ Supervision adds four behaviors on top of raw `spawn()`:
   observed.
 - `await proc` resolves for both successful and failed exits. Inspect the
   returned `ProcessResult`.
+- `ProcessResult.exitCode` exposes the shell-style exit status for the final
+  outcome, including signal exits.
+- Calling `proc.wait()` or awaiting the thenable process marks its terminal
+  result as observed and suppresses default parent-exit propagation.
+- An unobserved terminal failure sets `process.exitCode` to the first failing
+  process's `ProcessResult.exitCode` and starts stopping other live `procband`
+  processes in the same parent script.
 - The wrapper survives restarts, but inherited `pid`, `stdin`, `stdout`,
   `stderr`, and related `ChildProcess` fields always refer to the current active
   child attempt.
 - `kill()` only signals the current direct child. `stop()` disables restart and
   kills the full process tree.
+- Parent cleanup installs both `SIGINT` and `SIGTERM` handlers while any live
+  supervised process exists.
 - `stderr` prefixes always use the reserved red, even when a custom process
   color is configured.
 
@@ -101,6 +118,8 @@ Supervision adds four behaviors on top of raw `spawn()`:
 - A thrown `match()` callback only unsubscribes that callback.
 - Errors from `ProcessConfig.stderr` stop teeing to that sink but do not stop
   supervision.
+- Unobserved terminal failures do not reject promises. They set the parent
+  `process.exitCode` and start stopping sibling `procband` processes.
 - `stop()` may reject if tree-kill fails with a non-`ESRCH` error.
 
 # Terminology

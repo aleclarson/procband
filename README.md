@@ -4,7 +4,8 @@
 
 `procband` supervises subprocesses from TypeScript. It prefixes child output,
 matches future log lines, waits for terminal exit, optionally restarts failed
-processes, and tree-kills descendants during shutdown.
+processes, tree-kills descendants during shutdown, and propagates unobserved
+terminal failures to the parent process.
 
 ## Installation
 
@@ -34,4 +35,5 @@ console.log(result)
 - Concepts and lifecycle: [docs/context.md](docs/context.md)
 - Minimal usage example: [examples/basic-usage.ts](examples/basic-usage.ts)
 - Restart example: [examples/restart-on-failure.ts](examples/restart-on-failure.ts)
+- Sequencing example: [examples/sequenced-processes.ts](examples/sequenced-processes.ts)
 - Exact exported signatures: [dist/index.d.mts](dist/index.d.mts)
