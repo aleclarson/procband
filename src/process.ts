@@ -1,8 +1,8 @@
-import { spawn, type ChildProcessByStdio } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { constants } from 'node:os'
 import process from 'node:process'
-import type { Readable, Writable } from 'node:stream'
+import type { Writable } from 'node:stream'
 import {
   resolveProcessColor,
   stderrColor,
@@ -22,9 +22,9 @@ import type {
   KillSignal,
   MatchOptions,
   MatchPattern,
-  ProcbandProcess,
   ProcessConfig,
   ProcessResult,
+  ProcbandProcess,
   RgbColor,
   Signals,
   StopOptions,
@@ -32,22 +32,22 @@ import type {
 } from './types.js'
 
 type Attempt = {
-  readonly child: SupervisedChild
+  readonly child: ChildProcessWithoutNullStreams
   readonly generation: number
   readonly close: Promise<{ code: number | null; signal: Signals | null }>
-  readonly settleClose: (result: { code: number | null; signal: Signals | null }) => void
+  readonly settleClose: (result: {
+    code: number | null
+    signal: Signals | null
+  }) => void
   stdout: LineBuffer
   stderr: LineBuffer
   closed: boolean
-  stdinCleanup: (() => void) | null
 }
 
 type LineBuffer = {
   text: string
   flushed: boolean
 }
-
-type SupervisedChild = ChildProcessByStdio<Writable | null, Readable, Readable>
 
 /**
  * Start supervising a single subprocess.
@@ -82,8 +82,7 @@ export function supervise(config: ProcessConfig): ProcbandProcess {
 
 class ProcbandProcessImpl
   extends EventEmitter
-  implements PromiseLike<ProcessResult>, CleanupTarget
-{
+  implements PromiseLike<ProcessResult>, CleanupTarget {
   readonly config: ProcessConfig
   readonly name: string
   readonly label: string
@@ -118,7 +117,7 @@ class ProcbandProcessImpl
     this.matches = new MatchRegistry(this.name)
     this.restart = new RestartController(config.restart)
     this.stderrSink = config.stderr ?? null
-    this.finalPromise = new Promise((resolve) => {
+    this.finalPromise = new Promise(resolve => {
       this.finalResolve = resolve
     })
 
@@ -184,7 +183,10 @@ class ProcbandProcessImpl
     return this.matches.match(pattern, onMatch, options)
   }
 
-  waitFor(pattern: MatchPattern, options?: WaitForOptions) {
+  waitFor(
+    pattern: MatchPattern,
+    options?: WaitForOptions,
+  ) {
     return this.matches.waitFor(pattern, options)
   }
 
@@ -194,8 +196,12 @@ class ProcbandProcessImpl
   }
 
   then<TResult1 = ProcessResult, TResult2 = never>(
-    onfulfilled?: ((value: ProcessResult) => TResult1 | PromiseLike<TResult1>) | null,
-    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    onfulfilled?:
+      | ((value: ProcessResult) => TResult1 | PromiseLike<TResult1>)
+      | null,
+    onrejected?:
+      | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
+      | null,
   ): Promise<TResult1 | TResult2> {
     this.markTerminalResultObserved()
     return this.finalPromise.then(onfulfilled, onrejected)
@@ -258,14 +264,23 @@ class ProcbandProcessImpl
     await this.stopActiveTree(signal, 1000)
   }
 
-  private async stopActiveTree(signal: KillSignal, killAfterMs: number) {
+  private async stopActiveTree(
+    signal: KillSignal,
+    killAfterMs: number,
+  ) {
     const attempt = this.attempt
     if (!attempt || attempt.closed) {
       await this.finalPromise
       return
     }
 
-    await stopChildTree(attempt.child, attempt.close, () => attempt.closed, signal, killAfterMs)
+    await stopChildTree(
+      attempt.child,
+      attempt.close,
+      () => attempt.closed,
+      signal,
+      killAfterMs,
+    )
   }
 
   private spawnAttempt() {
@@ -274,21 +289,20 @@ class ProcbandProcessImpl
     const child = spawn(this.config.command, this.config.args ?? [], {
       cwd: this.config.cwd,
       env: this.config.env,
-      stdio: [this.config.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
-    }) as SupervisedChild
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
 
     let settleClose!: Attempt['settleClose']
     const attempt: Attempt = {
       child,
       generation: this.generation,
-      close: new Promise((resolve) => {
+      close: new Promise(resolve => {
         settleClose = resolve
       }),
       settleClose,
       stdout: { text: '', flushed: false },
       stderr: { text: '', flushed: false },
       closed: false,
-      stdinCleanup: null,
     }
 
     this.attempt = attempt
@@ -297,7 +311,6 @@ class ProcbandProcessImpl
 
   private attachAttempt(attempt: Attempt) {
     const { child } = attempt
-    attempt.stdinCleanup = this.bindAttemptStdin(attempt)
 
     child.on('spawn', () => {
       if (this.attempt === attempt) {
@@ -323,8 +336,6 @@ class ProcbandProcessImpl
       }
 
       attempt.closed = true
-      attempt.stdinCleanup?.()
-      attempt.stdinCleanup = null
       this.flushLineBuffer(attempt, 'stdout')
       this.flushLineBuffer(attempt, 'stderr')
       attempt.settleClose({ code, signal })
@@ -360,7 +371,11 @@ class ProcbandProcessImpl
     })
   }
 
-  private handleChunk(attempt: Attempt, stream: 'stdout' | 'stderr', chunk: Buffer) {
+  private handleChunk(
+    attempt: Attempt,
+    stream: 'stdout' | 'stderr',
+    chunk: Buffer,
+  ) {
     const buffer = attempt[stream]
     let text = buffer.text + chunk.toString('utf8')
     let newlineIndex = text.indexOf('\n')
@@ -376,7 +391,11 @@ class ProcbandProcessImpl
     buffer.text = text
   }
 
-  private handleLine(stream: 'stdout' | 'stderr', line: string, appendNewline: boolean) {
+  private handleLine(
+    stream: 'stdout' | 'stderr',
+    line: string,
+    appendNewline: boolean,
+  ) {
     writePrefixedLine(
       stream === 'stdout' ? process.stdout : process.stderr,
       this.label,
@@ -388,7 +407,10 @@ class ProcbandProcessImpl
     this.matches.emit(stream, line)
   }
 
-  private async handleAttemptClose(code: number | null, signal: Signals | null) {
+  private async handleAttemptClose(
+    code: number | null,
+    signal: Signals | null,
+  ) {
     if (this.restart.shouldRestart(code, signal, this.restartDisabled, this.finalized)) {
       if (!this.restart.prepareRestart(code, signal)) {
         this.finalize(this.createResult(code, signal))
@@ -408,7 +430,10 @@ class ProcbandProcessImpl
     this.finalize(this.createResult(code, signal))
   }
 
-  private createResult(code: number | null, signal: Signals | null): ProcessResult {
+  private createResult(
+    code: number | null,
+    signal: Signals | null,
+  ): ProcessResult {
     return {
       name: this.name,
       code,
@@ -435,7 +460,9 @@ class ProcbandProcessImpl
       propagateFailure(result.exitCode)
     }
     this.matches.close(
-      new Error(`Process "${this.name}" exited before a matching line was observed`),
+      new Error(
+        `Process "${this.name}" exited before a matching line was observed`,
+      ),
     )
     this.unbindStderrSink()
     unregisterCleanupTarget(this)
@@ -447,7 +474,11 @@ class ProcbandProcessImpl
   }
 
   private shouldPropagateFailure(result: ProcessResult) {
-    return result.exitCode !== 0 && !this.shutdownRequested && !this.terminalResultObserved
+    return (
+      result.exitCode !== 0 &&
+      !this.shutdownRequested &&
+      !this.terminalResultObserved
+    )
   }
 
   private bindStderrSink() {
@@ -491,7 +522,10 @@ class ProcbandProcessImpl
     }
   }
 
-  private flushLineBuffer(attempt: Attempt, stream: 'stdout' | 'stderr') {
+  private flushLineBuffer(
+    attempt: Attempt,
+    stream: 'stdout' | 'stderr',
+  ) {
     const buffer = attempt[stream]
     if (buffer.flushed || buffer.text.length === 0) {
       buffer.flushed = true
@@ -499,23 +533,11 @@ class ProcbandProcessImpl
     }
 
     buffer.flushed = true
-    const line = buffer.text.endsWith('\r') ? buffer.text.slice(0, -1) : buffer.text
+    const line = buffer.text.endsWith('\r')
+      ? buffer.text.slice(0, -1)
+      : buffer.text
     buffer.text = ''
     this.handleLine(stream, line, false)
-  }
-
-  private bindAttemptStdin(attempt: Attempt) {
-    const source = this.config.stdin
-    const destination = attempt.child.stdin
-
-    if (!destination || typeof source !== 'object') {
-      return null
-    }
-
-    source.pipe(destination)
-    return () => {
-      source.unpipe(destination)
-    }
   }
 }
 
@@ -531,7 +553,9 @@ function validateProcessConfig(config: ProcessConfig) {
 
   const name = config.name || inferProcessName(config.command)
   if (!name) {
-    throw new Error('ProcessConfig.name is required when command does not match /[-\\w]+$/')
+    throw new Error(
+      'ProcessConfig.name is required when command does not match /[-\\w]+$/',
+    )
   }
 
   return name
@@ -541,7 +565,10 @@ function inferProcessName(command: string) {
   return command.match(/[-\w]+$/)?.[0]
 }
 
-function getResultExitCode(code: number | null, signal: Signals | null) {
+function getResultExitCode(
+  code: number | null,
+  signal: Signals | null,
+) {
   if (code != null) {
     return code
   }

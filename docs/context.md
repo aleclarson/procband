@@ -35,8 +35,8 @@ Supervision adds four behaviors on top of raw `spawn()`:
 # Core Abstractions
 
 - `ProcessConfig`
-  Declares one supervised subprocess plus its label, color, restart policy,
-  optional stdin behavior, and optional raw `stderr` tee.
+  Declares one supervised subprocess plus its label, color, restart policy, and
+  optional raw `stderr` tee.
 - `ProcbandProcess`
   The live wrapper returned by `supervise()`. It is a `ChildProcess`-compatible
   handle, a matching surface, a shutdown surface, and a thenable final result.
@@ -52,17 +52,14 @@ Supervision adds four behaviors on top of raw `spawn()`:
 3. Each line is prefixed and written to the parent `process.stdout` or
    `process.stderr`.
 4. `stderr` can also be tee'd as raw bytes to `ProcessConfig.stderr`.
-5. `stdin` is disconnected by default. Set `ProcessConfig.stdin` to `true` for
-   a writable child stdin, or pass a readable stream to pipe input into the
-   child automatically.
-6. Future matching lines are delivered through `match()` callbacks or
+5. Future matching lines are delivered through `match()` callbacks or
    `waitFor()`.
-7. When a child exits, `procband` either finalizes or starts a new attempt,
+6. When a child exits, `procband` either finalizes or starts a new attempt,
    depending on the restart policy.
-8. A terminal failed exit that nobody observed through `await proc` or
+7. A terminal failed exit that nobody observed through `await proc` or
    `proc.wait()` sets `process.exitCode` and begins
    stopping any other live `procband` processes in the same parent script.
-9. `await proc` or `await proc.wait()` resolves only after the process is
+8. `await proc` or `await proc.wait()` resolves only after the process is
    terminal and no further restart will happen.
 
 # Common Tasks -> Recommended APIs
@@ -81,10 +78,6 @@ Supervision adds four behaviors on top of raw `spawn()`:
   Do not call `wait()` or await the thenable result
 - Capture raw child `stderr` in a file or custom stream:
   `ProcessConfig.stderr`
-- Write to child stdin manually:
-  `stdin: true`, then `proc.stdin?.write(...)`
-- Pipe a custom input stream into the child:
-  `stdin: readable`
 - Retry failed exits with sane defaults:
   `restart: true`
 - Use explicit retry rules:
@@ -109,7 +102,7 @@ Supervision adds four behaviors on top of raw `spawn()`:
   processes in the same parent script.
 - The wrapper survives restarts, but inherited `pid`, `stdin`, `stdout`,
   `stderr`, and related `ChildProcess` fields always refer to the current active
-  child attempt. `stdin` is `null` unless `ProcessConfig.stdin` is enabled.
+  child attempt.
 - `kill()` only signals the current direct child. `stop()` disables restart and
   kills the full process tree.
 - Parent cleanup installs both `SIGINT` and `SIGTERM` handlers while any live
