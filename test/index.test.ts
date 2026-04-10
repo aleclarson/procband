@@ -151,6 +151,112 @@ describe('supervise', () => {
     expect(stripAnsi(stdoutText)).toContain(`[${expectedName}] ready\n`)
   })
 
+  it('disables stdin by default', async () => {
+    const proc = track(
+      supervise({
+        name: 'stdin-default',
+        command: process.execPath,
+        args: [
+          '-e',
+          [
+            'process.stdin.setEncoding("utf8")',
+            'let text = ""',
+            'process.stdin.on("data", chunk => { text += chunk })',
+            'process.stdin.on("end", () => console.log(`stdin:${JSON.stringify(text)}`))',
+            'process.stdin.resume()',
+          ].join(';'),
+        ],
+      }),
+    )
+
+    expect(proc.stdin).toBeNull()
+
+    await expect(
+      proc.waitFor('stdin:""', { timeoutMs: 1000 }),
+    ).resolves.toMatchObject({
+      process: 'stdin-default',
+      stream: 'stdout',
+      line: 'stdin:""',
+    })
+
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'stdin-default',
+      exitCode: 0,
+    })
+  })
+
+  it('exposes writable stdin when stdin is true', async () => {
+    const proc = track(
+      supervise({
+        name: 'stdin-manual',
+        command: process.execPath,
+        args: [
+          '-e',
+          [
+            'process.stdin.setEncoding("utf8")',
+            'let text = ""',
+            'process.stdin.on("data", chunk => { text += chunk })',
+            'process.stdin.on("end", () => console.log(`stdin:${JSON.stringify(text)}`))',
+            'process.stdin.resume()',
+          ].join(';'),
+        ],
+        stdin: true,
+      }),
+    )
+
+    expect(proc.stdin).not.toBeNull()
+    proc.stdin?.end('hello from parent\n')
+
+    await expect(
+      proc.waitFor('stdin:"hello from parent\\n"', { timeoutMs: 1000 }),
+    ).resolves.toMatchObject({
+      process: 'stdin-manual',
+      stream: 'stdout',
+      line: 'stdin:"hello from parent\\n"',
+    })
+
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'stdin-manual',
+      exitCode: 0,
+    })
+  })
+
+  it('pipes a custom readable into child stdin', async () => {
+    const stdin = new PassThrough()
+    const proc = track(
+      supervise({
+        name: 'stdin-stream',
+        command: process.execPath,
+        args: [
+          '-e',
+          [
+            'process.stdin.setEncoding("utf8")',
+            'let text = ""',
+            'process.stdin.on("data", chunk => { text += chunk })',
+            'process.stdin.on("end", () => console.log(`stdin:${JSON.stringify(text)}`))',
+            'process.stdin.resume()',
+          ].join(';'),
+        ],
+        stdin,
+      }),
+    )
+
+    stdin.end('hello from stream\n')
+
+    await expect(
+      proc.waitFor('stdin:"hello from stream\\n"', { timeoutMs: 1000 }),
+    ).resolves.toMatchObject({
+      process: 'stdin-stream',
+      stream: 'stdout',
+      line: 'stdin:"hello from stream\\n"',
+    })
+
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'stdin-stream',
+      exitCode: 0,
+    })
+  })
+
   it('restarts on failure until success and reports restart count', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'procband-restart-'))
     const counterFile = join(dir, 'attempt.txt')

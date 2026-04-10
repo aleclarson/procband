@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import type { Writable } from 'node:stream'
+import type { Readable, Writable } from 'node:stream'
 
 /**
  * Accepted Node.js signal names.
@@ -77,6 +77,15 @@ export interface ProcessConfig {
    * `process.stderr`.
    */
   stderr?: Writable
+
+  /**
+   * Child stdin behavior.
+   *
+   * Defaults to `false`, which connects the child stdin to the null device.
+   * Use `true` to expose a writable `proc.stdin`, or pass a readable stream to
+   * pipe bytes into the child automatically.
+   */
+  stdin?: boolean | Readable
 
   /**
    * Automatic restart behavior for terminal child exits.
