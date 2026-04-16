@@ -29,9 +29,6 @@ const result = await proc
 console.log(result)
 ```
 
-`stdin` is disabled by default. Set `stdin: true` to write to `proc.stdin`, or
-pass a readable stream to `stdin` to pipe input automatically.
-
 ## Documentation Map
 
 - Concepts and lifecycle: [docs/context.md](docs/context.md)

@@ -92,7 +92,8 @@ export interface ProcessConfig {
    *
    * When provided, `procband` uses this signal for parent-driven cleanup on
    * `SIGINT`, `SIGTERM`, and `exit` instead of mirroring the parent signal or
-   * relying on the platform default.
+   * relying on the platform default. This only affects parent-driven cleanup;
+   * `proc.stop()` and `proc.kill()` still use their own explicit signals.
    */
   parentExitSignal?: KillSignal
 

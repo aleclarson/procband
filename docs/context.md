@@ -7,7 +7,7 @@ The returned `ProcbandProcess` is both:
 - a `ChildProcess`-compatible handle for the current active child attempt
 - a thenable wrapper that resolves to a `ProcessResult` when supervision is done
 
-Supervision adds four behaviors on top of raw `spawn()`:
+Supervision adds five behaviors on top of raw `spawn()`:
 
 - prefixed `stdout` and `stderr`
 - line-based matching for future output
@@ -36,7 +36,8 @@ Supervision adds four behaviors on top of raw `spawn()`:
 
 - `ProcessConfig`
   Declares one supervised subprocess plus its label, color, restart policy,
-  optional stdin behavior, and optional raw `stderr` tee.
+  optional stdin behavior, optional parent-exit signal override, and optional
+  raw `stderr` tee.
 - `ProcbandProcess`
   The live wrapper returned by `supervise()`. It is a `ChildProcess`-compatible
   handle, a matching surface, a shutdown surface, and a thenable final result.
@@ -89,6 +90,26 @@ Supervision adds four behaviors on top of raw `spawn()`:
   `restart: true`
 - Use explicit retry rules:
   `restart: { when, delayMs, maxFailures, windowMs }`
+- Force a specific signal during parent shutdown:
+  `parentExitSignal: 'SIGHUP'`
+
+# Recommended Patterns
+
+- Use `proc.stop()` for deliberate shutdown initiated by your own script.
+- Reserve `parentExitSignal` for children that expect a specific signal from
+  their supervisor during parent-driven cleanup.
+- Await `proc` or call `proc.wait()` when your script intends to own failure
+  handling instead of inheriting procband's default parent-exit propagation.
+
+# Patterns to Avoid
+
+- Do not treat `parentExitSignal` as a replacement for `StopOptions.signal`.
+  The former only changes parent-driven cleanup; the latter controls
+  explicit `proc.stop()` calls.
+- Do not rely on `kill()` for full shutdown when descendants may still be
+  running. `kill()` only targets the current direct child.
+- Do not expect historical log replay from `match()` or `waitFor()`. Matching
+  is future-only by design.
 
 # Invariants and Constraints
 
@@ -113,7 +134,9 @@ Supervision adds four behaviors on top of raw `spawn()`:
 - `kill()` only signals the current direct child. `stop()` disables restart and
   kills the full process tree.
 - Parent cleanup installs both `SIGINT` and `SIGTERM` handlers while any live
-  supervised process exists.
+  supervised process exists. Set `ProcessConfig.parentExitSignal` to override
+  which signal is sent to the child tree during parent-driven cleanup. This
+  does not change the signal used by explicit `proc.stop()` calls.
 - `stderr` prefixes always use the reserved red, even when a custom process
   color is configured.
 - `ProcessConfig.name` is optional. When omitted, it falls back to the
