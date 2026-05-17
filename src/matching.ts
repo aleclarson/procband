@@ -23,6 +23,7 @@ type MatchSubscription =
       stream: MatchStream
       resolve: (event: MatchEvent) => void
       reject: (error: Error) => void
+      suppressUnhandledRejection: () => void
       timer: NodeJS.Timeout | null
     }
 
@@ -67,7 +68,7 @@ export class MatchRegistry {
       return Promise.reject(this.closedError)
     }
 
-    return new Promise<MatchEvent>((resolve, reject) => {
+    const promise = new Promise<MatchEvent>((resolve, reject) => {
       const subscription: MatchSubscription = {
         active: true,
         kind: 'promise',
@@ -80,6 +81,9 @@ export class MatchRegistry {
         reject: error => {
           this.unsubscribe(subscription)
           reject(error)
+        },
+        suppressUnhandledRejection: () => {
+          promise.catch(() => {})
         },
         timer: null,
       }
@@ -96,6 +100,8 @@ export class MatchRegistry {
 
       this.subscriptions.add(subscription)
     })
+
+    return promise
   }
 
   emit(stream: 'stdout' | 'stderr', line: string) {
@@ -133,6 +139,15 @@ export class MatchRegistry {
     }
   }
 
+  hasPendingWait() {
+    for (const subscription of this.subscriptions) {
+      if (subscription.kind === 'promise') {
+        return true
+      }
+    }
+    return false
+  }
+
   close(error: Error) {
     if (this.closedError) {
       return
@@ -142,6 +157,10 @@ export class MatchRegistry {
 
     for (const subscription of [...this.subscriptions]) {
       if (subscription.kind === 'promise') {
+        // Callers can still observe the rejection by awaiting the original
+        // promise, but ignored readiness waits should not surface as unhandled
+        // promise rejections when the process exits first.
+        subscription.suppressUnhandledRejection()
         subscription.reject(error)
       } else {
         this.unsubscribe(subscription)

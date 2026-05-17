@@ -258,6 +258,44 @@ describe('supervise', () => {
     })
   })
 
+  it('logs when a process exits before an ignored waitFor match is observed', async () => {
+    const proc = track(
+      supervise({
+        name: 'missing-match',
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+      }),
+    )
+
+    proc.waitFor('ready')
+
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'missing-match',
+      exitCode: 0,
+    })
+    expect(stripAnsi(stderrText)).toContain(
+      '[missing-match] Process "missing-match" exited before a matching line was observed\n',
+    )
+  })
+
+  it('still rejects awaited waitFor calls when the process exits first', async () => {
+    const proc = track(
+      supervise({
+        name: 'awaited-missing-match',
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+      }),
+    )
+
+    await expect(proc.waitFor('ready')).rejects.toThrow(
+      'Process "awaited-missing-match" exited before a matching line was observed',
+    )
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'awaited-missing-match',
+      exitCode: 0,
+    })
+  })
+
   it('restarts on failure until success and reports restart count', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'procband-restart-'))
     const counterFile = join(dir, 'attempt.txt')

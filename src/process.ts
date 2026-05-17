@@ -443,12 +443,26 @@ class ProcbandProcessImpl
     if (this.shouldPropagateFailure(result)) {
       propagateFailure(result.exitCode)
     }
-    this.matches.close(
-      new Error(`Process "${this.name}" exited before a matching line was observed`),
-    )
+    this.closeMatches()
     this.unbindStderrSink()
     unregisterCleanupTarget(this)
     this.finalResolve(result)
+  }
+
+  private closeMatches() {
+    const error = new Error(
+      `Process "${this.name}" exited before a matching line was observed`,
+    )
+    if (this.matches.hasPendingWait()) {
+      writePrefixedLine(
+        process.stderr,
+        this.label,
+        stderrColor,
+        error.message,
+        true,
+      )
+    }
+    this.matches.close(error)
   }
 
   private markTerminalResultObserved() {
