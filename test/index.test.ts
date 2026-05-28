@@ -399,8 +399,7 @@ describe('supervise', () => {
 
     expect(proc.kill()).toBe(true)
     await expect(proc.wait()).resolves.toMatchObject({
-      name: 'kill-zero',
-      signal: 'SIGTERM',
+      ...expectedTerminationResult('kill-zero'),
       restarts: 0,
     })
   })
@@ -430,7 +429,7 @@ describe('supervise', () => {
     const result = await proc.wait()
 
     expect(result.name).toBe('tree')
-    expect(result.exitCode).toBe(128 + constants.signals.SIGTERM)
+    expect(result).toMatchObject(expectedTerminationResult('tree'))
     await waitForExit(pid)
   })
 
@@ -516,11 +515,7 @@ describe('supervise', () => {
     ).cleanupFromSignal('SIGTERM')
 
     const result = await proc.wait()
-    expect(result).toMatchObject({
-      name: 'term',
-      exitCode: 128 + constants.signals.SIGTERM,
-      signal: 'SIGTERM',
-    })
+    expect(result).toMatchObject(expectedTerminationResult('term'))
     expect(process.listeners('SIGTERM')).toHaveLength(
       initialSigtermListeners.length,
     )
@@ -544,12 +539,9 @@ describe('supervise', () => {
       }
     ).cleanupFromSignal('SIGTERM')
 
-    await expect(proc.wait()).resolves.toMatchObject({
-      name: 'parent-signal-override',
-      code: null,
-      exitCode: 128 + constants.signals.SIGHUP,
-      signal: 'SIGHUP',
-    })
+    await expect(proc.wait()).resolves.toMatchObject(
+      expectedTerminationResult('parent-signal-override', 'SIGHUP'),
+    )
   })
 
   it('uses parentExitSignal for parent exit cleanup', async () => {
@@ -568,12 +560,9 @@ describe('supervise', () => {
       }
     ).cleanupFromExit()
 
-    await expect(proc.wait()).resolves.toMatchObject({
-      name: 'parent-exit-override',
-      code: null,
-      exitCode: 128 + constants.signals.SIGHUP,
-      signal: 'SIGHUP',
-    })
+    await expect(proc.wait()).resolves.toMatchObject(
+      expectedTerminationResult('parent-exit-override', 'SIGHUP'),
+    )
   })
 
   it('propagates the first unobserved failure to the parent exit code', async () => {
@@ -593,11 +582,7 @@ describe('supervise', () => {
 
     expect(process.exitCode).toBe(7)
     expect(failing.exitCode).toBe(7)
-    expect(siblingResult).toMatchObject({
-      name: 'peer',
-      exitCode: 128 + constants.signals.SIGTERM,
-      signal: 'SIGTERM',
-    })
+    expect(siblingResult).toMatchObject(expectedTerminationResult('peer'))
   })
 
   it('does not propagate failures for observed processes', async () => {
@@ -692,6 +677,24 @@ function decodeWriteChunk(
 
 function stripAnsi(value: string) {
   return value.replace(/\u001B\[[0-9;]*m/g, '')
+}
+
+function expectedTerminationResult(name: string, signal: NodeJS.Signals = 'SIGTERM') {
+  if (process.platform === 'win32') {
+    return {
+      name,
+      code: 1,
+      exitCode: 1,
+      signal: null,
+    }
+  }
+
+  return {
+    name,
+    code: null,
+    exitCode: 128 + constants.signals[signal as keyof typeof constants.signals],
+    signal,
+  }
 }
 
 function isAlive(pid: number) {
