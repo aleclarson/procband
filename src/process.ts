@@ -252,7 +252,9 @@ class ProcbandProcessImpl
 
     const child = this.currentChild
     if (child) {
-      killTreeBestEffort(child, this.getParentCleanupSignal())
+      killTreeBestEffort(child, this.getParentCleanupSignal(), {
+        detached: this.config.detached,
+      })
     }
   }
 
@@ -267,7 +269,14 @@ class ProcbandProcessImpl
       return
     }
 
-    await stopChildTree(attempt.child, attempt.close, () => attempt.closed, signal, killAfterMs)
+    await stopChildTree(
+      attempt.child,
+      attempt.close,
+      () => attempt.closed,
+      signal,
+      killAfterMs,
+      { detached: this.config.detached },
+    )
   }
 
   private getParentCleanupSignal(): KillSignal | undefined

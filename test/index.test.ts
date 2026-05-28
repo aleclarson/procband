@@ -434,6 +434,55 @@ describe('supervise', () => {
     await waitForExit(pid)
   })
 
+  it('kill() stops same-process-group descendants of detached children', async () => {
+    if (process.platform === 'win32') {
+      return
+    }
+
+    const sleeperScript = [
+      'process.title = "procband-detached-regression-sleeper"',
+      'setInterval(() => {}, 1000)',
+    ].join(';')
+    const spawnerScript = [
+      'const { spawn } = await import("node:child_process")',
+      `const sleeper = spawn(process.execPath, ["-e", ${JSON.stringify(sleeperScript)}], { stdio: "ignore" })`,
+      'console.log(`sleeper:${sleeper.pid}`)',
+      'sleeper.unref()',
+    ].join(';')
+    const rootScript = [
+      'const { spawn } = await import("node:child_process")',
+      `const spawner = spawn(process.execPath, ["-e", ${JSON.stringify(spawnerScript)}], { stdio: ["ignore", "pipe", "ignore"] })`,
+      'spawner.stdout.setEncoding("utf8")',
+      'spawner.stdout.on("data", chunk => process.stdout.write(chunk))',
+      'spawner.on("close", () => console.log(`ready:${process.pid}`))',
+      'setInterval(() => {}, 1000)',
+    ].join(';')
+
+    const proc = track(
+      supervise({
+        name: 'detached-tree',
+        command: process.execPath,
+        args: ['-e', rootScript],
+        detached: true,
+      }),
+    )
+
+    const sleeper = await proc.waitFor(/sleeper:(\d+)/)
+    const sleeperPid = Number(sleeper.match?.[1])
+    expect(Number.isInteger(sleeperPid)).toBe(true)
+    await proc.waitFor(/ready:(\d+)/)
+
+    expect(isAlive(sleeperPid)).toBe(true)
+    expect(getProcessGroupId(sleeperPid)).toBe(proc.pid)
+
+    expect(proc.kill()).toBe(true)
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'detached-tree',
+      signal: 'SIGTERM',
+    })
+    await waitForExit(sleeperPid)
+  })
+
   it('stops live processes on parent SIGTERM', async () => {
     const script = [
       'const { spawn } = await import("node:child_process")',

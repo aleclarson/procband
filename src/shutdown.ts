@@ -9,6 +9,10 @@ export interface CleanupTarget {
   cleanupFromSignal(signal: NodeJS.Signals): Promise<void>
 }
 
+export interface StopChildOptions {
+  detached?: boolean
+}
+
 const liveTargets = new Set<CleanupTarget>()
 let parentCleanupInstalled = false
 let handlingSignal = false
@@ -28,7 +32,14 @@ export function unregisterCleanupTarget(target: CleanupTarget) {
 export function killTreeBestEffort(
   child: ChildProcess,
   signal?: KillSignal,
+  options: StopChildOptions = {},
 ) {
+  if (options.detached) {
+    try {
+      killProcessGroup(child, signal)
+    } catch {}
+  }
+
   try {
     treeKillSync(child, signal)
   } catch {}
@@ -40,7 +51,12 @@ export async function stopChildTree(
   isClosed: () => boolean,
   signal: KillSignal,
   killAfterMs: number,
+  options: StopChildOptions = {},
 ) {
+  if (options.detached) {
+    killProcessGroup(child, signal)
+  }
+
   try {
     await treeKill(child, signal)
   } catch (error) {
@@ -55,6 +71,10 @@ export async function stopChildTree(
   ])
 
   if (!exitedGracefully && !isClosed()) {
+    if (options.detached) {
+      killProcessGroup(child, 'SIGKILL')
+    }
+
     try {
       await treeKill(child, 'SIGKILL')
     } catch (error) {
@@ -64,6 +84,20 @@ export async function stopChildTree(
     }
 
     await close
+  }
+}
+
+function killProcessGroup(child: ChildProcess, signal?: KillSignal) {
+  if (process.platform === 'win32' || !child.pid) {
+    return
+  }
+
+  try {
+    process.kill(-child.pid, signal)
+  } catch (error) {
+    if (!isMissingProcessError(error)) {
+      throw error
+    }
   }
 }
 
