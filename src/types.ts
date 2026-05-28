@@ -58,7 +58,10 @@ export interface ProcessConfig {
   /**
    * Whether to spawn the child in a detached process group/session.
    *
-   * This is passed through to Node.js `spawn()` unchanged.
+   * This is passed through to Node.js `spawn()` unchanged. On Unix-like
+   * platforms, shutdown also signals the detached child's process group so
+   * same-group descendants are cleaned up even if they are no longer reachable
+   * through the child process tree.
    */
   detached?: boolean
 
@@ -310,7 +313,8 @@ export interface ProcbandProcess
    * Disable future restarts and terminate the active process tree.
    *
    * For supervised processes, `kill()` targets the current child process and
-   * any descendants it spawned instead of only the direct child.
+   * any descendants it spawned instead of only the direct child. Detached
+   * Unix-like children are also stopped by process group.
    * `kill(0)` preserves the normal `ChildProcess` existence-check behavior.
    */
   kill(signal?: KillSignal): boolean

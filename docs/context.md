@@ -12,7 +12,7 @@ Supervision adds five behaviors on top of raw `spawn()`:
 - prefixed `stdout` and `stderr`
 - line-based matching for future output
 - optional restart policy with failure suppression
-- tree-aware shutdown for the child and its descendants
+- shutdown for the child and descendants, including detached Unix process groups
 - parent-exit propagation for unobserved terminal failures
 
 # When to Use
@@ -96,6 +96,9 @@ Supervision adds five behaviors on top of raw `spawn()`:
 # Recommended Patterns
 
 - Use `proc.kill()` for deliberate shutdown initiated by your own script.
+- Use `detached: true` when a child must run in its own process group/session.
+  On Unix-like platforms, `procband` uses that process group during shutdown in
+  addition to process-tree cleanup.
 - Reserve `parentExitSignal` for children that expect a specific signal from
   their supervisor during parent-driven cleanup.
 - Await `proc` or call `proc.wait()` when your script intends to own failure
@@ -130,12 +133,15 @@ Supervision adds five behaviors on top of raw `spawn()`:
 - The wrapper survives restarts, but inherited `pid`, `stdin`, `stdout`,
   `stderr`, and related `ChildProcess` fields always refer to the current active
   child attempt. `stdin` is `null` unless `ProcessConfig.stdin` is enabled.
-- `kill()` disables future restarts and kills the full process tree, except for
-  `kill(0)`, which only checks whether the current child attempt exists.
+- `kill()` disables future restarts and kills the full process tree. For
+  `detached: true` children on Unix-like platforms, shutdown also signals the
+  detached child's process group so same-group descendants are cleaned up even
+  when they are no longer reachable by parent PID. `kill(0)` only checks
+  whether the current child attempt exists.
 - Parent cleanup installs both `SIGINT` and `SIGTERM` handlers while any live
   supervised process exists. Set `ProcessConfig.parentExitSignal` to override
-  which signal is sent to the child tree during parent-driven cleanup. This
-  does not change the signal used by explicit `proc.kill()` calls.
+  which signal is sent during parent-driven cleanup. This does not change the
+  signal used by explicit `proc.kill()` calls.
 - `stderr` prefixes always use the reserved red, even when a custom process
   color is configured.
 - `ProcessConfig.name` is optional. When omitted, it falls back to the
