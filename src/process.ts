@@ -599,4 +599,8 @@ function propagateFailure(exitCode: number) {
   for (const proc of liveProcesses) {
     proc.kill()
   }
+
+  setImmediate(() => {
+    process.exit(process.exitCode ?? exitCode)
+  })
 }

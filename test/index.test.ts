@@ -566,6 +566,10 @@ describe('supervise', () => {
   })
 
   it('propagates the first unobserved failure to the parent exit code', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      return undefined as never
+    }) as typeof process.exit)
+
     const failing = supervise({
       name: 'fail',
       command: process.execPath,
@@ -583,6 +587,9 @@ describe('supervise', () => {
     expect(process.exitCode).toBe(7)
     expect(failing.exitCode).toBe(7)
     expect(siblingResult).toMatchObject(expectedTerminationResult('peer'))
+
+    await new Promise(resolve => setImmediate(resolve))
+    expect(exit).toHaveBeenCalledWith(7)
   })
 
   it('does not propagate failures for observed processes', async () => {
