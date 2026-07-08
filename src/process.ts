@@ -116,7 +116,7 @@ class ProcbandProcessImpl
     this.config = config
     this.name = name
     this.label = config.label ?? name
-    this.prefix = config.prefix ?? true
+    this.prefix = config.name === '' ? false : (config.prefix ?? true)
     this.color = resolveProcessColor(config.color)
     this.matches = new MatchRegistry(this.name)
     this.restart = new RestartController(config.restart)
@@ -580,7 +580,9 @@ function validateProcessConfig(config: ProcessConfig) {
 
   validateProcessColor(config.color)
 
-  const name = config.name || inferProcessName(config.command)
+  const name = config.name === undefined || config.name === ''
+    ? inferProcessName(config.command)
+    : config.name
   if (!name) {
     throw new Error('ProcessConfig.name is required when command does not match /[-\\w]+$/')
   }

@@ -210,6 +210,33 @@ describe('supervise', () => {
     `)
   })
 
+  it('treats an empty name as an unprefixed inferred name', async () => {
+    const expectedName = process.execPath.match(/[-\w]+$/)?.[0]
+    expect(expectedName).toBeTruthy()
+
+    const proc = track(
+      supervise({
+        name: '',
+        command: process.execPath,
+        args: ['-e', 'console.log("ready")'],
+      }),
+    )
+
+    await expect(proc.waitFor('ready')).resolves.toMatchObject({
+      process: expectedName,
+      stream: 'stdout',
+      line: 'ready',
+    })
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: expectedName,
+      exitCode: 0,
+    })
+    expect(stripAnsi(stdoutText)).toMatchInlineSnapshot(`
+      "ready
+      "
+    `)
+  })
+
   it('expectSuccess resolves successful exits', async () => {
     const proc = track(
       supervise({
