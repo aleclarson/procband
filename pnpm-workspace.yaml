@@ -2,3 +2,6 @@ onlyBuiltDependencies:
   - esbuild
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - lildocs
+  - exports-md
