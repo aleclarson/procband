@@ -1,192 +1,239 @@
-# Overview
+# Concepts and Lifecycle
 
-`procband` supervises one subprocess per `supervise()` call.
+> `procband` supervises one child process at a time; this page defines the
+> wrapper lifecycle, restart boundary, shutdown behavior, and failure model that
+> guide pages rely on.
 
-The returned `ProcbandProcess` is both:
+## Core Model
 
-- a `ChildProcess`-compatible handle for the current active child attempt
-- a thenable wrapper that resolves to a `ProcessResult` when supervision is done
+Each `supervise(config)` call creates one supervised process. The returned
+`ProcbandProcess` is both:
 
-Supervision adds five behaviors on top of raw `spawn()`:
+| Surface              | What it represents                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Child-process handle | The current active child attempt. Inherited fields such as `pid`, `stdin`, `stdout`, and `stderr` update across restarts. |
+| Matching surface     | Future output lines observed by `match()` and `waitFor()`.                                                                |
+| Shutdown surface     | `kill()` disables future restarts and stops the current child process tree.                                               |
+| Thenable result      | `await proc` is equivalent to `await proc.wait()` and resolves to the terminal `ProcessResult`.                           |
 
-- prefixed `stdout` and `stderr`
-- line-based matching for future output
-- optional restart policy with failure suppression
-- shutdown for the child and descendants, including detached Unix process groups
-- parent-exit propagation for unobserved terminal failures
+```ts
+import process from 'node:process'
+import { supervise } from 'procband'
 
-# When to Use
+const proc = supervise({
+  name: 'api',
+  command: process.execPath,
+  args: ['-e', 'console.log("ready")'],
+})
 
-- You are writing project-specific TypeScript scripts, not a CLI.
-- You need to wait for a subprocess to print a "ready" line.
-- You want readable prefixed logs from multiple long-lived child processes.
-- You need one shutdown API that kills descendant processes too.
-- You want automatic restart with a small built-in guard against tight failure
-  loops.
+await proc.waitFor('ready')
+const result = await proc
+```
 
-# When Not to Use
+After the readiness line is observed, `result` is available only when the
+process is terminal and no restart delay or attempt remains.
 
-- You need a standalone process manager or service supervisor.
-- You need buffered log history or replay for late subscribers.
-- You need shell pipelines, shell parsing, or a command-line tool.
-- You want one API that supervises many processes at once. `procband` keeps the
-  unit of supervision to one process per call.
+## Lifecycle
 
-# Core Abstractions
+1. `supervise(config)` validates the config and spawns the first child
+   immediately.
+2. Child `stdout` and `stderr` are decoded as UTF-8 text and split into lines.
+3. Each line is written to the parent `process.stdout` or `process.stderr` with
+   a process prefix. `stderr` prefixes always use the reserved red color.
+4. If `ProcessConfig.stderr` is provided, raw child `stderr` bytes are also
+   written to that sink.
+5. Matching subscribers receive future lines through `match()` callbacks or
+   `waitFor()` promises.
+6. When the child exits, `procband` either finalizes or schedules another child
+   attempt according to the restart policy.
+7. `await proc`, `await proc.wait()`, and `await proc.expectSuccess()` settle
+   only after the supervised process is terminal.
 
-- `ProcessConfig`
-  Declares one supervised subprocess plus its label, color, restart policy,
-  optional stdin behavior, optional detached spawn mode, optional
-  parent-exit signal override, and optional raw `stderr` tee.
-- `ProcbandProcess`
-  The live wrapper returned by `supervise()`. It is a `ChildProcess`-compatible
-  handle, a matching surface, a shutdown surface, and a thenable final result.
-- `MatchEvent`
-  A future matched line from `stdout` or `stderr`.
-- `RestartPolicy`
-  Rules for restart timing and failed-exit suppression.
+Use this shape when one process must become ready before another starts:
 
-# Data Flow / Lifecycle
+```ts
+import process from 'node:process'
+import { supervise } from 'procband'
 
-1. `supervise(config)` spawns the first child process immediately.
-2. Child `stdout` and `stderr` are read as text and split into lines.
-3. Each line is prefixed and written to the parent `process.stdout` or
-   `process.stderr`.
-4. `stderr` can also be tee'd as raw bytes to `ProcessConfig.stderr`.
-5. `stdin` is disconnected by default. Set `ProcessConfig.stdin` to `true` for
-   a writable child stdin, or pass a readable stream to pipe input into the
-   child automatically.
-6. Future matching lines are delivered through `match()` callbacks or
-   `waitFor()`.
-7. When a child exits, `procband` either finalizes or starts a new attempt,
-   depending on the restart policy.
-8. A terminal failed exit that nobody observed through `await proc` or
-   `proc.wait()` sets `process.exitCode` and begins
-   stopping any other live `procband` processes in the same parent script.
-9. `await proc` or `await proc.wait()` resolves only after the process is
-   terminal and no further restart will happen.
+const api = supervise({
+  name: 'api',
+  command: process.execPath,
+  args: ['-e', 'setTimeout(() => console.log("ready"), 20)'],
+})
 
-# Common Tasks -> Recommended APIs
+await api.waitFor('ready')
 
-- Wait for one readiness line:
-  `proc.waitFor('ready')`
-- React to repeated matching output:
-  `proc.match(pattern, callback, options)`
-- Stop the process and its descendants:
-  `proc.kill()`
-- Inspect final exit state:
-  `await proc` or `await proc.wait()`
-- Take ownership of a process failure:
-  `await proc` or `await proc.wait()`
-- Run a foreground command that must succeed:
-  `await proc.expectSuccess()` or `await proc.wait({ rejectOnFailure: true })`
-- Let an unobserved terminal failure fail the parent script:
-  Do not call `wait()` or await the thenable result
-- Capture raw child `stderr` in a file or custom stream:
-  `ProcessConfig.stderr`
-- Write to child stdin manually:
-  `stdin: true`, then `proc.stdin?.write(...)`
-- Pipe a custom input stream into the child:
-  `stdin: readable`
-- Retry failed exits with sane defaults:
-  `restart: true`
-- Use explicit retry rules:
-  `restart: { when, delayMs, maxFailures, windowMs }`
-- Force a specific signal during parent shutdown:
-  `parentExitSignal: 'SIGHUP'`
+supervise({
+  name: 'worker',
+  command: process.execPath,
+  args: ['-e', 'console.log("watching")'],
+})
+```
 
-# Recommended Patterns
+The worker starts after the API prints a future line containing `ready`.
 
-- Use `proc.kill()` for deliberate shutdown initiated by your own script.
-- Use `detached: true` when a child must run in its own process group/session.
-  On Unix-like platforms, `procband` uses that process group during shutdown in
-  addition to process-tree cleanup.
-- Reserve `parentExitSignal` for children that expect a specific signal from
-  their supervisor during parent-driven cleanup.
-- Await `proc` or call `proc.wait()` when your script intends to own failure
-  handling instead of inheriting procband's default parent-exit propagation.
+## Matching
 
-# Patterns to Avoid
+Matching is line-based and future-only. A subscription sees lines emitted after
+the subscription is registered; it does not replay earlier output.
 
-- Do not treat `parentExitSignal` as a replacement for the signal passed to
-  `proc.kill(signal)`. The former only changes parent-driven cleanup.
-- Do not expect `kill(0)` to stop supervision. `kill(0)` remains an existence
-  check for the current child attempt.
-- Do not expect historical log replay from `match()` or `waitFor()`. Matching
-  is future-only by design.
+| Pattern  | Behavior                                                                     |
+| -------- | ---------------------------------------------------------------------------- |
+| String   | Matches when the observed line includes the string.                          |
+| `RegExp` | Runs against the full observed line. `lastIndex` is reset before each match. |
 
-# Invariants and Constraints
+Use `waitFor()` for one required line:
 
-- Matching is line-based and future-only.
-- String patterns use substring matching.
-- RegExp patterns run against the full observed line.
-- `match()` subscriptions do not interfere with each other.
-- `waitFor()` rejects if the process becomes terminal before a future match is
-  observed.
-- `await proc` resolves for both successful and failed exits. Inspect the
-  returned `ProcessResult`.
-- `proc.expectSuccess()` and `proc.wait({ rejectOnFailure: true })` reject
-  failed exits with `ProcessExitError`.
-- `ProcessResult.exitCode` exposes the shell-style exit status for the final
-  outcome, including signal exits.
-- Calling `proc.wait()` or awaiting the thenable process marks its terminal
-  result as observed and suppresses default parent-exit propagation.
-- An unobserved terminal failure sets `process.exitCode` to the first failing
-  process's `ProcessResult.exitCode` and starts stopping other live `procband`
-  processes in the same parent script.
-- The wrapper survives restarts, but inherited `pid`, `stdin`, `stdout`,
-  `stderr`, and related `ChildProcess` fields always refer to the current active
-  child attempt. `stdin` is `null` unless `ProcessConfig.stdin` is enabled.
-- `kill()` disables future restarts and kills the full process tree. For
-  `detached: true` children on Unix-like platforms, shutdown also signals the
-  detached child's process group so same-group descendants are cleaned up even
-  when they are no longer reachable by parent PID. `kill(0)` only checks
-  whether the current child attempt exists.
-- Parent cleanup installs both `SIGINT` and `SIGTERM` handlers while any live
-  supervised process exists. Set `ProcessConfig.parentExitSignal` to override
-  which signal is sent during parent-driven cleanup. This does not change the
-  signal used by explicit `proc.kill()` calls.
-- `stderr` prefixes always use the reserved red, even when a custom process
-  color is configured.
-- `ProcessConfig.name` is optional. When omitted, it falls back to the
-  trailing `/[-\w]+$/` match from `command`.
+```ts
+const event = await proc.waitFor(/^ready$/, {
+  stream: 'stdout',
+  timeoutMs: 5000,
+})
 
-# Error Model
+console.log(event.process, event.line)
+```
 
-- `supervise()` throws synchronously for invalid config such as missing
-  `command`, a `command` that does not produce a fallback `name`, or an
-  invalid reserved color.
-- `waitFor()` rejects on timeout or terminal exit before a future match.
-- `expectSuccess()` and `wait({ rejectOnFailure: true })` reject on non-zero
-  exits or signal exits with `ProcessExitError`. The error includes the
-  original `ProcessConfig`, final `ProcessResult`, command, args, exit code,
-  and signal.
-- A thrown `match()` callback only unsubscribes that callback.
-- Errors from `ProcessConfig.stderr` stop teeing to that sink but do not stop
-  supervision.
-- Unobserved terminal failures do not reject promises. They set the parent
-  `process.exitCode` and start stopping sibling `procband` processes.
-- `kill()` emits `error` if tree-kill fails with a non-`ESRCH` error.
+Use `match()` for repeated lines:
 
-# Terminology
+```ts
+const unsubscribe = proc.match(
+  /^attempt \d+$/,
+  (event) => {
+    console.log(`observed ${event.line}`)
+  },
+  { stream: 'stdout' },
+)
 
-- Supervised process:
-  A `ProcbandProcess` wrapper plus its current child attempt.
-- Child attempt:
-  One concrete spawned process instance inside a supervision run.
-- Terminal:
-  No child is running and no restart will be started.
-- Restart suppression:
-  Automatic disabling of further restarts after too many failed exits inside the
-  configured window.
-- Match:
-  A future observed output line that satisfies a string or regex pattern.
+unsubscribe()
+```
 
-# Non-Goals
+`waitFor()` rejects when its timeout elapses or the process becomes terminal
+before a matching future line appears. If a `match()` callback throws, only that
+subscription is removed.
+
+## Restarts
+
+`restart: true` uses the built-in policy:
+
+| Field         | Default        | Meaning                                                  |
+| ------------- | -------------- | -------------------------------------------------------- |
+| `when`        | `'on-failure'` | Restart only non-zero exits or signal exits.             |
+| `delayMs`     | `1000`         | Wait this long before the next attempt.                  |
+| `maxFailures` | `3`            | Suppress restart after more than this many failed exits. |
+| `windowMs`    | `30000`        | Count failed exits inside this rolling window.           |
+
+Pass an explicit policy when the defaults are too slow or too permissive:
+
+```ts
+const proc = supervise({
+  name: 'job',
+  command: process.execPath,
+  args: ['-e', 'process.exit(1)'],
+  restart: {
+    delayMs: 25,
+    maxFailures: 5,
+    windowMs: 1000,
+  },
+})
+
+const result = await proc
+console.log(result.restarts, result.restartSuppressed)
+```
+
+If the child keeps failing inside the configured window, `restartSuppressed`
+becomes `true` and the final failed result is returned.
+
+## Shutdown
+
+Use `proc.kill()` for deliberate shutdown from your own script:
+
+```ts
+const stopped = proc.kill('SIGTERM')
+```
+
+`kill()` disables future restarts and stops the active child process tree. For
+`detached: true` children on Unix-like platforms, shutdown also signals the
+detached child process group so same-group descendants are cleaned up even when
+they are no longer reachable by parent PID.
+
+> [!NOTE]
+> `kill(0)` keeps the normal Node.js existence-check behavior. It does not stop
+> supervision or disable restarts.
+
+Parent cleanup installs `SIGINT` and `SIGTERM` handlers while live supervised
+processes exist. Set `parentExitSignal` only when children require a specific
+signal during parent-driven cleanup:
+
+```ts
+supervise({
+  name: 'server',
+  command: process.execPath,
+  args: ['server.mjs'],
+  parentExitSignal: 'SIGHUP',
+})
+```
+
+`parentExitSignal` does not change the signal used by explicit `proc.kill()`
+calls.
+
+## Failure Model
+
+`procband` separates terminal process failure from promise rejection:
+
+| API                                    | Failed terminal exit                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
+| `await proc`                           | Resolves to `ProcessResult`.                                                        |
+| `proc.wait()`                          | Resolves to `ProcessResult`.                                                        |
+| `proc.wait({ rejectOnFailure: true })` | Rejects with `ProcessExitError`.                                                    |
+| `proc.expectSuccess()`                 | Rejects with `ProcessExitError`.                                                    |
+| Unobserved process                     | Sets parent `process.exitCode` and starts stopping other live supervised processes. |
+
+`ProcessExitError` includes the original config, final result, command, args,
+exit code, and signal:
+
+```ts
+import { ProcessExitError } from 'procband'
+
+try {
+  await proc.expectSuccess()
+} catch (error) {
+  if (error instanceof ProcessExitError) {
+    console.error(error.command, error.exitCode, error.signal)
+  }
+  throw error
+}
+```
+
+## Configuration Boundaries
+
+| Field      | Boundary                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `command`  | Required shell-free executable or command name passed to `spawn()`.                                              |
+| `name`     | Optional stable process identifier. Defaults to the trailing `/[-\w]+$/` match from `command`.                   |
+| `label`    | Optional human-facing output prefix. Defaults to `name`.                                                         |
+| `stdin`    | Defaults to disconnected. Use `true` for writable `proc.stdin`, or pass a readable stream to pipe automatically. |
+| `stderr`   | Optional extra sink for raw child `stderr`; prefixed parent `stderr` output still happens.                       |
+| `detached` | Passed through to `spawn()` and used during shutdown on Unix-like platforms.                                     |
+| `color`    | Optional RGB prefix color for `stdout`; reserved `stderr` red cannot be used.                                    |
+
+Invalid config, such as a missing `command`, a command without an inferable
+fallback `name`, or a reserved color, throws synchronously from `supervise()`.
+
+## Terminology
+
+| Term                | Meaning                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| Supervised process  | A `ProcbandProcess` wrapper plus its current child attempt.                                       |
+| Child attempt       | One concrete spawned process instance inside a supervision run.                                   |
+| Terminal            | No child is running and no restart will be started.                                               |
+| Restart suppression | Automatic disabling of further restarts after too many failed exits inside the configured window. |
+| Match               | A future observed output line that satisfies a string or regex pattern.                           |
+
+## Non-Goals
 
 - A standalone CLI
 - Historical log replay
 - Multi-process orchestration in one top-level API
 - Shell command parsing
-- Full service-management features such as persistence, cron scheduling, or host
+- Service-management features such as persistence, cron scheduling, or host
   restarts
