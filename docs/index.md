@@ -15,7 +15,7 @@ of Node.js `spawn()`:
 
 | Behavior                       | Use it when                                                                |
 | ------------------------------ | -------------------------------------------------------------------------- |
-| Prefixed output                | Multiple child processes write to the same parent terminal.                |
+| Optional prefixed output       | Multiple child processes write to the same parent terminal.                |
 | Future line matching           | The parent script must wait for a readiness line or react to logs.         |
 | Optional restarts              | A transient failure should start another child attempt.                    |
 | Process-tree shutdown          | Deliberate cleanup should stop descendants as well as the direct child.    |

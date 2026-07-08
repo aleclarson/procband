@@ -9,9 +9,6 @@ immediately, prefixes `stdout` and `stderr`, lets your script wait for future
 log lines, and resolves to a final `ProcessResult` when no more restart attempt
 will run.
 
-Set `prefix: false` when a child should write raw `stdout` and `stderr` without
-the process label.
-
 ## Install
 
 ```sh

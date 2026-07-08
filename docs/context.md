@@ -73,6 +73,33 @@ supervise({
 
 The worker starts after the API prints a future line containing `ready`.
 
+## Output Prefixes
+
+By default, each child output line is written to the parent terminal with the
+process label:
+
+```ts
+supervise({
+  name: 'server',
+  command: process.execPath,
+  args: ['-e', 'console.log("ready")'],
+})
+```
+
+Set `prefix: false` when a child should keep raw `stdout` and `stderr` output:
+
+```ts
+supervise({
+  name: 'server',
+  prefix: false,
+  command: process.execPath,
+  args: ['-e', 'console.log("ready")'],
+})
+```
+
+Disabling the prefix changes only parent-visible output and procband
+diagnostics. Matching events and final results still use the process `name`.
+
 ## Matching
 
 Matching is line-based and future-only. A subscription sees lines emitted after
