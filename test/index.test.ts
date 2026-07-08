@@ -4,11 +4,9 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { constants, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import ansiStyles from 'ansi-styles'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProcessExitError, supervise, type ProcbandProcess } from '../src/index.js'
 
-const stderrColor = [239, 68, 68] as const
 const activeProcesses = new Set<ProcbandProcess>()
 
 let stdoutText = ''
@@ -116,11 +114,26 @@ describe('supervise', () => {
       line: 'warn',
       match: null,
     })
-    expect(rawStderr).toBe('warn\n')
-    expect(stdoutText).toContain(ansiStyles.color.ansi16m(1, 2, 3))
-    expect(stderrText).toContain(ansiStyles.color.ansi16m(...stderrColor))
-    expect(stripAnsi(stdoutText)).toContain('[basic] ready\n')
-    expect(stripAnsi(stderrText)).toContain('[basic] warn\n')
+    expect(rawStderr).toMatchInlineSnapshot(`
+      "warn
+      "
+    `)
+    expect(stdoutText).toMatchInlineSnapshot(`
+      "[38;2;1;2;3m[basic][39m ready
+      "
+    `)
+    expect(stderrText).toMatchInlineSnapshot(`
+      "[38;2;239;68;68m[basic][39m warn
+      "
+    `)
+    expect(stripAnsi(stdoutText)).toMatchInlineSnapshot(`
+      "[basic] ready
+      "
+    `)
+    expect(stripAnsi(stderrText)).toMatchInlineSnapshot(`
+      "[basic] warn
+      "
+    `)
   })
 
   it('falls back to a name derived from command', async () => {
@@ -149,7 +162,12 @@ describe('supervise', () => {
       restartSuppressed: false,
     })
 
-    expect(stripAnsi(stdoutText)).toContain(`[${expectedName}] ready\n`)
+    expect(
+      stripAnsi(stdoutText).replace(`[${expectedName}]`, '[<command>]'),
+    ).toMatchInlineSnapshot(`
+      "[<command>] ready
+      "
+    `)
   })
 
   it('expectSuccess resolves successful exits', async () => {
@@ -184,10 +202,9 @@ describe('supervise', () => {
 
     expect(error).toBeInstanceOf(ProcessExitError)
     const exitError = error as ProcessExitError
-    expect(exitError.message).toContain('Process "expected-failure" failed:')
-    expect(exitError.message).toContain(formatCommandPart(process.execPath))
-    expect(exitError.message).toContain('process.exit(7)')
-    expect(exitError.message).toContain('exited with code 7')
+    expect(normalizeExecPath(exitError.message)).toMatchInlineSnapshot(
+      `"Process "expected-failure" failed: <node> -e "process.exit(7)" exited with code 7"`,
+    )
     expect(exitError.config).toBe(config)
     expect(exitError.command).toBe(process.execPath)
     expect(exitError.args).toEqual(['-e', 'process.exit(7)'])
@@ -228,10 +245,9 @@ describe('supervise', () => {
 
     expect(error).toBeInstanceOf(ProcessExitError)
     const exitError = error as ProcessExitError
-    expect(exitError.message).toContain('Process "expected-signal" failed:')
-    expect(exitError.message).toContain(process.execPath)
-    expect(exitError.message).toContain('console.log')
-    expect(exitError.message).toContain('exited by signal SIGTERM')
+    expect(normalizeExecPath(exitError.message)).toMatchInlineSnapshot(
+      `"Process "expected-signal" failed: <node> -e "console.log(\\"ready\\"); setInterval(() => {}, 1000)" exited by signal SIGTERM (exit code 143)"`,
+    )
     expect(exitError.code).toBeNull()
     expect(exitError.signal).toBe('SIGTERM')
     expect(exitError.exitCode).toBe(128 + constants.signals.SIGTERM)
@@ -363,9 +379,10 @@ describe('supervise', () => {
       name: 'missing-match',
       exitCode: 0,
     })
-    expect(stripAnsi(stderrText)).toContain(
-      '[missing-match] Process "missing-match" exited before a matching line was observed\n',
-    )
+    expect(stripAnsi(stderrText)).toMatchInlineSnapshot(`
+      "[missing-match] Process "missing-match" exited before a matching line was observed
+      "
+    `)
   })
 
   it('still rejects awaited waitFor calls when the process exits first', async () => {
@@ -377,8 +394,8 @@ describe('supervise', () => {
       }),
     )
 
-    await expect(proc.waitFor('ready')).rejects.toThrow(
-      'Process "awaited-missing-match" exited before a matching line was observed',
+    await expect(proc.waitFor('ready')).rejects.toThrowErrorMatchingInlineSnapshot(
+      `[Error: Process "awaited-missing-match" exited before a matching line was observed]`,
     )
     await expect(proc.wait()).resolves.toMatchObject({
       name: 'awaited-missing-match',
@@ -776,12 +793,10 @@ function stripAnsi(value: string) {
   return value.replace(/\u001B\[[0-9;]*m/g, '')
 }
 
-function formatCommandPart(value: string) {
-  if (/^[\w./:=@%+,-]+$/.test(value)) {
-    return value
-  }
-
-  return JSON.stringify(value)
+function normalizeExecPath(value: string) {
+  return value
+    .replaceAll(JSON.stringify(process.execPath), '<node>')
+    .replaceAll(process.execPath, '<node>')
 }
 
 function expectedTerminationResult(name: string, signal: NodeJS.Signals = 'SIGTERM') {
