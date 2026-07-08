@@ -73,6 +73,13 @@ export interface ProcessConfig {
   label?: string
 
   /**
+   * Whether child output should be prefixed with the process label.
+   *
+   * Defaults to `true`. Set to `false` for raw child output.
+   */
+  prefix?: boolean
+
+  /**
    * RGB color for this process's `stdout` prefix.
    *
    * When omitted, `procband` assigns the next color from its default palette.

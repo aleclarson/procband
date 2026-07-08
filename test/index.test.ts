@@ -170,6 +170,46 @@ describe('supervise', () => {
     `)
   })
 
+  it('can write child output without process prefixes', async () => {
+    const proc = track(
+      supervise({
+        name: 'unprefixed',
+        prefix: false,
+        command: process.execPath,
+        args: [
+          '-e',
+          [
+            'console.log("ready")',
+            'console.error("warn")',
+          ].join(';'),
+        ],
+      }),
+    )
+
+    await expect(proc.waitFor('ready')).resolves.toMatchObject({
+      process: 'unprefixed',
+      stream: 'stdout',
+      line: 'ready',
+    })
+    await expect(proc.waitFor('warn', { stream: 'stderr' })).resolves.toMatchObject({
+      process: 'unprefixed',
+      stream: 'stderr',
+      line: 'warn',
+    })
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'unprefixed',
+      exitCode: 0,
+    })
+    expect(stripAnsi(stdoutText)).toMatchInlineSnapshot(`
+      "ready
+      "
+    `)
+    expect(stripAnsi(stderrText)).toMatchInlineSnapshot(`
+      "warn
+      "
+    `)
+  })
+
   it('expectSuccess resolves successful exits', async () => {
     const proc = track(
       supervise({
@@ -381,6 +421,28 @@ describe('supervise', () => {
     })
     expect(stripAnsi(stderrText)).toMatchInlineSnapshot(`
       "[missing-match] Process "missing-match" exited before a matching line was observed
+      "
+    `)
+  })
+
+  it('can write pending match diagnostics without process prefixes', async () => {
+    const proc = track(
+      supervise({
+        name: 'unprefixed-missing-match',
+        prefix: false,
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+      }),
+    )
+
+    proc.waitFor('ready')
+
+    await expect(proc.wait()).resolves.toMatchObject({
+      name: 'unprefixed-missing-match',
+      exitCode: 0,
+    })
+    expect(stripAnsi(stderrText)).toMatchInlineSnapshot(`
+      "Process "unprefixed-missing-match" exited before a matching line was observed
       "
     `)
   })

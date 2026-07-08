@@ -88,6 +88,7 @@ class ProcbandProcessImpl
   readonly config: ProcessConfig
   readonly name: string
   readonly label: string
+  readonly prefix: boolean
   readonly color: RgbColor
 
   private readonly matches: MatchRegistry
@@ -115,6 +116,7 @@ class ProcbandProcessImpl
     this.config = config
     this.name = name
     this.label = config.label ?? name
+    this.prefix = config.prefix ?? true
     this.color = resolveProcessColor(config.color)
     this.matches = new MatchRegistry(this.name)
     this.restart = new RestartController(config.restart)
@@ -406,7 +408,7 @@ class ProcbandProcessImpl
   private handleLine(stream: 'stdout' | 'stderr', line: string, appendNewline: boolean) {
     writePrefixedLine(
       stream === 'stdout' ? process.stdout : process.stderr,
-      this.label,
+      this.prefix ? this.label : null,
       stream === 'stdout' ? this.color : stderrColor,
       line,
       appendNewline,
@@ -474,7 +476,7 @@ class ProcbandProcessImpl
     if (this.matches.hasPendingWait()) {
       writePrefixedLine(
         process.stderr,
-        this.label,
+        this.prefix ? this.label : null,
         stderrColor,
         error.message,
         true,

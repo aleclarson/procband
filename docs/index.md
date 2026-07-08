@@ -42,6 +42,7 @@ matched.
 | Decision         | Default                                       | Change it when                                                             |
 | ---------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
 | Process identity | `name` is inferred from `command`.            | The command path does not end in `/[-\w]+$/`, or logs need a stable label. |
+| Output prefix    | Child output is labeled.                      | Pass `prefix: false` when the child should write raw output.               |
 | Failure handling | Awaiting resolves to `ProcessResult`.         | Use `expectSuccess()` for command-runner steps that should reject.         |
 | Matching scope   | `waitFor()` and `match()` watch both streams. | Pass `{ stream: 'stdout' }` or `{ stream: 'stderr' }` to narrow matching.  |
 | Restart behavior | No restart.                                   | Pass `restart: true` or a policy for transient child failures.             |

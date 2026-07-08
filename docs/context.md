@@ -39,7 +39,8 @@ process is terminal and no restart delay or attempt remains.
    immediately.
 2. Child `stdout` and `stderr` are decoded as UTF-8 text and split into lines.
 3. Each line is written to the parent `process.stdout` or `process.stderr` with
-   a process prefix. `stderr` prefixes always use the reserved red color.
+   a process prefix unless `ProcessConfig.prefix` is `false`. `stderr` prefixes
+   always use the reserved red color.
 4. If `ProcessConfig.stderr` is provided, raw child `stderr` bytes are also
    written to that sink.
 5. Matching subscribers receive future lines through `match()` callbacks or
@@ -211,6 +212,7 @@ try {
 | `command`  | Required shell-free executable or command name passed to `spawn()`.                                              |
 | `name`     | Optional stable process identifier. Defaults to the trailing `/[-\w]+$/` match from `command`.                   |
 | `label`    | Optional human-facing output prefix. Defaults to `name`.                                                         |
+| `prefix`   | Defaults to `true`. Set to `false` to write output and diagnostics without the process label prefix.             |
 | `stdin`    | Defaults to disconnected. Use `true` for writable `proc.stdin`, or pass a readable stream to pipe automatically. |
 | `stderr`   | Optional extra sink for raw child `stderr`; prefixed parent `stderr` output still happens.                       |
 | `detached` | Passed through to `spawn()` and used during shutdown on Unix-like platforms.                                     |

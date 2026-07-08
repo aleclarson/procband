@@ -54,12 +54,13 @@ export function validateProcessColor(color?: RgbColor) {
 
 export function writePrefixedLine(
   target: Writable,
-  label: string,
+  label: string | null,
   color: RgbColor,
   line: string,
   appendNewline: boolean,
 ) {
-  target.write(formatPrefix(label, color) + line + (appendNewline ? '\n' : ''))
+  const prefix = label == null ? '' : formatPrefix(label, color)
+  target.write(prefix + line + (appendNewline ? '\n' : ''))
 }
 
 export function formatPrefix(label: string, color: RgbColor) {
