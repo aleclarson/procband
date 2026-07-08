@@ -7,7 +7,7 @@ on:
     types:
       - completed
     branches:
-      - master
+      - main
   workflow_dispatch:
     inputs:
       version:
@@ -30,9 +30,9 @@ jobs:
     if: >-
       (github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'master') ||
+        github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'workflow_dispatch' &&
-        github.ref == 'refs/heads/master')
+        github.ref == 'refs/heads/main')
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -118,7 +118,7 @@ jobs:
             git commit -m "chore(release): ${{ steps.version.outputs.tag }}"
           fi
           git tag "${{ steps.version.outputs.tag }}"
-          git push origin HEAD:master
+          git push origin HEAD:main
           git push origin "${{ steps.version.outputs.tag }}"
 
       - name: Publish to npm with provenance
