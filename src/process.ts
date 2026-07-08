@@ -9,6 +9,7 @@ import {
   validateProcessColor,
   writePrefixedLine,
 } from './colors.js'
+import { ProcessExitError } from './errors.js'
 import { MatchRegistry } from './matching.js'
 import { RestartController } from './restart.js'
 import {
@@ -28,6 +29,7 @@ import type {
   RgbColor,
   Signals,
   WaitForOptions,
+  WaitOptions,
 } from './types.js'
 
 type Attempt = {
@@ -187,9 +189,16 @@ class ProcbandProcessImpl
     return this.matches.waitFor(pattern, options)
   }
 
-  wait(): Promise<ProcessResult> {
+  wait(options?: WaitOptions): Promise<ProcessResult> {
     this.markTerminalResultObserved()
+    if (options?.rejectOnFailure) {
+      return this.finalPromise.then((result) => this.expectSuccessfulResult(result))
+    }
     return this.finalPromise
+  }
+
+  expectSuccess(): Promise<ProcessResult> {
+    return this.wait({ rejectOnFailure: true })
   }
 
   then<TResult1 = ProcessResult, TResult2 = never>(
@@ -478,6 +487,14 @@ class ProcbandProcessImpl
     this.terminalResultObserved = true
   }
 
+  private expectSuccessfulResult(result: ProcessResult) {
+    if (isFailedResult(result)) {
+      throw new ProcessExitError(this.config, result)
+    }
+
+    return result
+  }
+
   private shouldPropagateFailure(result: ProcessResult) {
     return result.exitCode !== 0 && !this.shutdownRequested && !this.terminalResultObserved
   }
@@ -583,6 +600,10 @@ function getResultExitCode(code: number | null, signal: Signals | null) {
   }
 
   return 1
+}
+
+function isFailedResult(result: ProcessResult) {
+  return result.exitCode !== 0 || result.signal != null
 }
 
 function propagateFailure(exitCode: number) {

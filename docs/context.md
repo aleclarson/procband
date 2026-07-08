@@ -78,6 +78,8 @@ Supervision adds five behaviors on top of raw `spawn()`:
   `await proc` or `await proc.wait()`
 - Take ownership of a process failure:
   `await proc` or `await proc.wait()`
+- Run a foreground command that must succeed:
+  `await proc.expectSuccess()` or `await proc.wait({ rejectOnFailure: true })`
 - Let an unobserved terminal failure fail the parent script:
   Do not call `wait()` or await the thenable result
 - Capture raw child `stderr` in a file or custom stream:
@@ -123,6 +125,8 @@ Supervision adds five behaviors on top of raw `spawn()`:
   observed.
 - `await proc` resolves for both successful and failed exits. Inspect the
   returned `ProcessResult`.
+- `proc.expectSuccess()` and `proc.wait({ rejectOnFailure: true })` reject
+  failed exits with `ProcessExitError`.
 - `ProcessResult.exitCode` exposes the shell-style exit status for the final
   outcome, including signal exits.
 - Calling `proc.wait()` or awaiting the thenable process marks its terminal
@@ -153,6 +157,10 @@ Supervision adds five behaviors on top of raw `spawn()`:
   `command`, a `command` that does not produce a fallback `name`, or an
   invalid reserved color.
 - `waitFor()` rejects on timeout or terminal exit before a future match.
+- `expectSuccess()` and `wait({ rejectOnFailure: true })` reject on non-zero
+  exits or signal exits with `ProcessExitError`. The error includes the
+  original `ProcessConfig`, final `ProcessResult`, command, args, exit code,
+  and signal.
 - A thrown `match()` callback only unsubscribes that callback.
 - Errors from `ProcessConfig.stderr` stop teeing to that sink but do not stop
   supervision.

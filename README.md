@@ -29,6 +29,25 @@ const result = await proc
 console.log(result)
 ```
 
+For foreground command-runner style steps, opt into rejecting failed exits:
+
+```ts
+import { ProcessExitError, supervise } from 'procband'
+
+try {
+  await supervise({
+    name: 'db',
+    command: 'pnpm',
+    args: ['db', 'ensure'],
+  }).expectSuccess()
+} catch (error) {
+  if (error instanceof ProcessExitError) {
+    console.error(error.command, error.args, error.exitCode)
+  }
+  throw error
+}
+```
+
 ## Documentation Map
 
 - Concepts and lifecycle: [docs/context.md](docs/context.md)

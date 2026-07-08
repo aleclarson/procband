@@ -257,6 +257,19 @@ export interface ProcessResult {
 }
 
 /**
+ * Options for `wait()`.
+ */
+export interface WaitOptions {
+  /**
+   * Reject with `ProcessExitError` when the process exits unsuccessfully.
+   *
+   * Defaults to `false`, preserving procband's supervision-oriented behavior
+   * where terminal failures resolve to `ProcessResult`.
+   */
+  rejectOnFailure?: boolean
+}
+
+/**
  * A supervised child-process handle.
  *
  * `ProcbandProcess` behaves like the current active `ChildProcess`, while also
@@ -303,11 +316,17 @@ export interface ProcbandProcess
   /**
    * Wait for the process to become terminal with no further restart pending.
    *
-   * Unlike many process helpers, this resolves for both success and failure.
-   * Inspect the returned `ProcessResult` instead of relying on promise
-   * rejection for non-zero exits.
+   * By default this resolves for both success and failure. Pass
+   * `rejectOnFailure: true` to reject failed exits with `ProcessExitError`.
    */
-  wait(): Promise<ProcessResult>
+  wait(options?: WaitOptions): Promise<ProcessResult>
+
+  /**
+   * Wait for the process to become terminal and reject if it fails.
+   *
+   * This is equivalent to `wait({ rejectOnFailure: true })`.
+   */
+  expectSuccess(): Promise<ProcessResult>
 
   /**
    * Disable future restarts and terminate the active process tree.

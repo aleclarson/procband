@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import ansiStyles from 'ansi-styles'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { supervise, type ProcbandProcess } from '../src/index.js'
+import { ProcessExitError, supervise, type ProcbandProcess } from '../src/index.js'
 
 const stderrColor = [239, 68, 68] as const
 const activeProcesses = new Set<ProcbandProcess>()
@@ -150,6 +150,96 @@ describe('supervise', () => {
     })
 
     expect(stripAnsi(stdoutText)).toContain(`[${expectedName}] ready\n`)
+  })
+
+  it('expectSuccess resolves successful exits', async () => {
+    const proc = track(
+      supervise({
+        name: 'expected-success',
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+      }),
+    )
+
+    await expect(proc.expectSuccess()).resolves.toMatchObject({
+      name: 'expected-success',
+      exitCode: 0,
+    })
+  })
+
+  it('rejects failed exits with ProcessExitError when requested', async () => {
+    const config = {
+      name: 'expected-failure',
+      command: process.execPath,
+      args: ['-e', 'process.exit(7)'],
+    }
+    const proc = supervise(config)
+
+    let error: unknown
+    try {
+      await proc.wait({ rejectOnFailure: true })
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toBeInstanceOf(ProcessExitError)
+    const exitError = error as ProcessExitError
+    expect(exitError.message).toContain('Process "expected-failure" failed:')
+    expect(exitError.message).toContain(process.execPath)
+    expect(exitError.message).toContain('process.exit(7)')
+    expect(exitError.message).toContain('exited with code 7')
+    expect(exitError.config).toBe(config)
+    expect(exitError.command).toBe(process.execPath)
+    expect(exitError.args).toEqual(['-e', 'process.exit(7)'])
+    expect(exitError.code).toBe(7)
+    expect(exitError.exitCode).toBe(7)
+    expect(exitError.signal).toBeNull()
+    expect(exitError.result).toEqual({
+      name: 'expected-failure',
+      code: 7,
+      exitCode: 7,
+      signal: null,
+      restarts: 0,
+      restartSuppressed: false,
+    })
+    expect(process.exitCode).toBeUndefined()
+  })
+
+  it('rejects signal exits when success is expected', async () => {
+    if (process.platform === 'win32') {
+      return
+    }
+
+    const proc = supervise({
+      name: 'expected-signal',
+      command: process.execPath,
+      args: ['-e', 'console.log("ready"); setInterval(() => {}, 1000)'],
+    })
+
+    await proc.waitFor('ready')
+    expect(proc.kill('SIGTERM')).toBe(true)
+
+    let error: unknown
+    try {
+      await proc.expectSuccess()
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toBeInstanceOf(ProcessExitError)
+    const exitError = error as ProcessExitError
+    expect(exitError.message).toContain('Process "expected-signal" failed:')
+    expect(exitError.message).toContain(process.execPath)
+    expect(exitError.message).toContain('console.log')
+    expect(exitError.message).toContain('exited by signal SIGTERM')
+    expect(exitError.code).toBeNull()
+    expect(exitError.signal).toBe('SIGTERM')
+    expect(exitError.exitCode).toBe(128 + constants.signals.SIGTERM)
+    expect(exitError.result).toMatchObject({
+      name: 'expected-signal',
+      code: null,
+      signal: 'SIGTERM',
+    })
   })
 
   it('disables stdin by default', async () => {
