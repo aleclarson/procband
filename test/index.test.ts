@@ -185,7 +185,7 @@ describe('supervise', () => {
     expect(error).toBeInstanceOf(ProcessExitError)
     const exitError = error as ProcessExitError
     expect(exitError.message).toContain('Process "expected-failure" failed:')
-    expect(exitError.message).toContain(process.execPath)
+    expect(exitError.message).toContain(formatCommandPart(process.execPath))
     expect(exitError.message).toContain('process.exit(7)')
     expect(exitError.message).toContain('exited with code 7')
     expect(exitError.config).toBe(config)
@@ -774,6 +774,14 @@ function decodeWriteChunk(
 
 function stripAnsi(value: string) {
   return value.replace(/\u001B\[[0-9;]*m/g, '')
+}
+
+function formatCommandPart(value: string) {
+  if (/^[\w./:=@%+,-]+$/.test(value)) {
+    return value
+  }
+
+  return JSON.stringify(value)
 }
 
 function expectedTerminationResult(name: string, signal: NodeJS.Signals = 'SIGTERM') {
