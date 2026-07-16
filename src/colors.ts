@@ -29,7 +29,7 @@ export function resolveProcessColor(color?: RgbColor): RgbColor {
   return [...paletteColor] as RgbColor
 }
 
-export function validateProcessColor(color?: RgbColor) {
+export function validateProcessColor(color?: RgbColor, optionName = 'ProcessConfig.color') {
   if (!color) {
     return
   }
@@ -37,18 +37,12 @@ export function validateProcessColor(color?: RgbColor) {
   const [red, green, blue] = color
   for (const value of [red, green, blue]) {
     if (!Number.isInteger(value) || value < 0 || value > 255) {
-      throw new Error(
-        'ProcessConfig.color must contain integer RGB values between 0 and 255',
-      )
+      throw new Error(`${optionName} must contain integer RGB values between 0 and 255`)
     }
   }
 
-  if (
-    red === stderrColor[0] &&
-    green === stderrColor[1] &&
-    blue === stderrColor[2]
-  ) {
-    throw new Error('ProcessConfig.color cannot use the reserved stderr color')
+  if (red === stderrColor[0] && green === stderrColor[1] && blue === stderrColor[2]) {
+    throw new Error(`${optionName} cannot use the reserved stderr color`)
   }
 }
 
@@ -59,8 +53,17 @@ export function writePrefixedLine(
   line: string,
   appendNewline: boolean,
 ) {
+  target.write(formatPrefixedLine(label, color, line, appendNewline))
+}
+
+export function formatPrefixedLine(
+  label: string | null,
+  color: RgbColor,
+  line: string,
+  appendNewline: boolean,
+) {
   const prefix = label == null ? '' : formatPrefix(label, color)
-  target.write(prefix + line + (appendNewline ? '\n' : ''))
+  return prefix + line + (appendNewline ? '\n' : '')
 }
 
 export function formatPrefix(label: string, color: RgbColor) {

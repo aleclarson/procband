@@ -128,6 +128,22 @@ export interface ProcessConfig {
 export type RgbColor = readonly [red: number, green: number, blue: number]
 
 /**
+ * Options for `createPrefixStream()`.
+ */
+export interface PrefixStreamOptions {
+  /** Human-facing label added to each output line. */
+  label: string
+
+  /**
+   * RGB color for the prefix.
+   *
+   * When omitted, `procband` assigns the next color from its default palette.
+   * The reserved `stderr` red cannot be used here.
+   */
+  color?: RgbColor
+}
+
+/**
  * Controls whether and how a supervised process restarts after exit.
  */
 export interface RestartPolicy {

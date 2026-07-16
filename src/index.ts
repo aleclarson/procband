@@ -1,4 +1,5 @@
 export { ProcessExitError } from './errors.js'
+export { createPrefixStream } from './prefix-stream.js'
 export { supervise } from './process.js'
 export type {
   MatchCallback,
@@ -6,6 +7,7 @@ export type {
   MatchOptions,
   ProcessConfig,
   ProcessResult,
+  PrefixStreamOptions,
   ProcbandProcess,
   RestartPolicy,
   RgbColor,

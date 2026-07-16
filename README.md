@@ -85,6 +85,24 @@ If your script never awaits the process or calls `wait()`, an unobserved failed
 terminal exit sets the parent `process.exitCode` and starts stopping other live
 `procband` processes in the same parent script.
 
+## Prefix an Existing Stream
+
+Use `createPrefixStream()` when another API already owns a process lifecycle
+but its output should use procband's label and color formatting:
+
+```ts
+import { createPrefixStream } from 'procband'
+
+const output = createPrefixStream({ label: 'postgres' })
+output.pipe(process.stdout)
+postgres.stdout.pipe(output)
+```
+
+The transform preserves stream backpressure, buffers partial lines and UTF-8
+characters across chunks, and flushes a final unterminated line when input ends.
+Pass `color: [red, green, blue]` to select a prefix color; otherwise procband
+assigns the next color from its shared palette.
+
 ## Documentation
 
 Start with the page that matches the decision in front of you:
