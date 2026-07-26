@@ -100,8 +100,9 @@ postgres.stdout.pipe(output)
 
 The transform preserves stream backpressure, buffers partial lines and UTF-8
 characters across chunks, and flushes a final unterminated line when input ends.
-Pass `color: [red, green, blue]` to select a prefix color; otherwise procband
-assigns the next color from its shared palette.
+Pass `color: [red, green, blue]` to select a prefix color, or `color: "red"` to
+use the same red as supervised stderr output. Otherwise, procband assigns the
+next color from its shared palette.
 
 ## Documentation
 

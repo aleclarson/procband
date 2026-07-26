@@ -1,6 +1,11 @@
 import { StringDecoder } from 'node:string_decoder'
 import { Transform } from 'node:stream'
-import { formatPrefixedLine, resolveProcessColor, validateProcessColor } from './colors.js'
+import {
+  formatPrefixedLine,
+  resolveProcessColor,
+  stderrColor,
+  validateProcessColor,
+} from './colors.js'
 import type { PrefixStreamOptions, RgbColor } from './types.js'
 
 /**
@@ -10,10 +15,11 @@ import type { PrefixStreamOptions, RgbColor } from './types.js'
  * CRLF input is normalized to LF, matching supervised process output, and a
  * final unterminated line is emitted when the writable side ends.
  *
- * @param options Label and optional prefix color.
+ * @param options Label and optional prefix color. Pass `color: "red"` to use
+ * the same red as supervised stderr output.
  * @returns A backpressure-aware Node.js transform stream.
- * @throws When `options.color` is invalid or uses procband's reserved stderr
- * color.
+ * @throws When an RGB `options.color` is invalid or uses procband's reserved
+ * stderr color.
  * @example
  * ```ts
  * import { createPrefixStream } from 'procband'
@@ -24,8 +30,11 @@ import type { PrefixStreamOptions, RgbColor } from './types.js'
  * ```
  */
 export function createPrefixStream(options: PrefixStreamOptions): Transform {
-  validateProcessColor(options.color, 'PrefixStreamOptions.color')
-  return new PrefixTransform(options.label, resolveProcessColor(options.color))
+  const color = options.color === 'red' ? stderrColor : options.color
+  if (options.color !== 'red') {
+    validateProcessColor(color, 'PrefixStreamOptions.color')
+  }
+  return new PrefixTransform(options.label, resolveProcessColor(color))
 }
 
 class PrefixTransform extends Transform {

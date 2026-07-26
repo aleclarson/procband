@@ -36,6 +36,15 @@ describe('createPrefixStream', () => {
     expect(await firstOutput).not.toBe(await secondOutput)
   })
 
+  it('uses the reserved stderr red when requested', async () => {
+    const stream = createPrefixStream({ label: 'stderr', color: 'red' })
+    const output = collect(stream)
+
+    stream.end('failed\n')
+
+    await expect(output).resolves.toBe('\u001B[38;2;239;68;68m[stderr]\u001B[39m failed\n')
+  })
+
   it('validates explicit colors', () => {
     expect(() => createPrefixStream({ label: 'db', color: [256, 0, 0] })).toThrow(
       'PrefixStreamOptions.color must contain integer RGB values between 0 and 255',

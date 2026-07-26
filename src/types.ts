@@ -135,12 +135,13 @@ export interface PrefixStreamOptions {
   label: string
 
   /**
-   * RGB color for the prefix.
+   * Color for the prefix.
    *
    * When omitted, `procband` assigns the next color from its default palette.
-   * The reserved `stderr` red cannot be used here.
+   * Pass `"red"` to use the same red as supervised `stderr` output. The
+   * equivalent RGB tuple remains reserved and cannot be passed directly.
    */
-  color?: RgbColor
+  color?: RgbColor | 'red'
 }
 
 /**
