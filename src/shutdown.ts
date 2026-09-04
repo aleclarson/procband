@@ -1,6 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
 import process from 'node:process'
-import { setTimeout as delay } from 'node:timers/promises'
 import treeKill, { treeKillSync } from '@alloc/tree-kill'
 import type { KillSignal } from './types.js'
 
@@ -65,10 +64,18 @@ export async function stopChildTree(
     }
   }
 
-  const exitedGracefully = await Promise.race([
-    close.then(() => true),
-    delay(killAfterMs, false),
-  ])
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  let exitedGracefully: boolean
+  try {
+    exitedGracefully = await Promise.race([
+      close.then(() => true),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), killAfterMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!exitedGracefully && !isClosed()) {
     if (options.detached) {

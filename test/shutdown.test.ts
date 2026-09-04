@@ -55,6 +55,55 @@ describe('stopChildTree', () => {
     treeKillSync.mockClear()
   })
 
+  it('releases the shutdown timer when the child closes', async () => {
+    const { stopChildTree } = await import('../src/shutdown.js')
+    const child = { pid: 123 }
+    const timeoutCount = () =>
+      process.getActiveResourcesInfo().filter((type) => type === 'Timeout').length
+    const initialTimeouts = timeoutCount()
+
+    await stopChildTree(child as never, Promise.resolve(), () => true, 'SIGTERM', 5000)
+
+    expect(timeoutCount()).toBe(initialTimeouts)
+    expect(treeKill.mock.calls).toEqual([[child, 'SIGTERM']])
+  })
+
+  it('releases the shutdown timer when close rejects', async () => {
+    const { stopChildTree } = await import('../src/shutdown.js')
+    const error = new Error('close failed')
+    const timeoutCount = () =>
+      process.getActiveResourcesInfo().filter((type) => type === 'Timeout').length
+    const initialTimeouts = timeoutCount()
+
+    await expect(
+      stopChildTree({ pid: 123 } as never, Promise.reject(error), () => false, 'SIGTERM', 5000),
+    ).rejects.toBe(error)
+
+    expect(timeoutCount()).toBe(initialTimeouts)
+    expect(treeKill).toHaveBeenCalledTimes(1)
+  })
+
+  it('escalates a child that remains open after the timeout', async () => {
+    const { stopChildTree } = await import('../src/shutdown.js')
+    const child = { pid: 123 }
+    let closeChild!: () => void
+    const close = new Promise<void>((resolve) => {
+      closeChild = resolve
+    })
+    treeKill.mockImplementation(async (_child, signal) => {
+      if (signal === 'SIGKILL') {
+        closeChild()
+      }
+    })
+
+    await stopChildTree(child as never, close, () => false, 'SIGTERM', 1)
+
+    expect(treeKill.mock.calls).toEqual([
+      [child, 'SIGTERM'],
+      [child, 'SIGKILL'],
+    ])
+  })
+
   it('escalates detached Unix process groups after graceful timeout', async () => {
     if (process.platform === 'win32') {
       return
