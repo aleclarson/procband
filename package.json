@@ -1,6 +1,6 @@
 {
   "name": "procband",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Supervise subprocesses from TypeScript: prefix logs, wait for output patterns, and manage lifecycle/restarts.",
   "packageManager": "pnpm@11.5.1",
   "license": "MIT",
